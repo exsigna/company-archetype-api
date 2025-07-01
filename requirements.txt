@@ -1,0 +1,38 @@
+# Web framework for Render deployment
+Flask>=2.3.0
+gunicorn>=21.2.0
+
+# Core dependencies
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+# AI API clients
+openai>=1.0.0
+anthropic>=0.3.0
+
+# PDF processing
+PyPDF2>=3.0.0
+pdfplumber>=0.10.0
+
+# OCR capabilities
+pytesseract>=0.3.10
+pdf2image>=1.16.0
+Pillow>=10.0.0
+
+# Data processing
+pandas>=2.0.0
+
+# File handling
+pathlib2>=2.3.7
+
+# Development and testing (optional - comment out for production)
+# pytest>=7.0.0
+# pytest-cov>=4.0.0
+# black>=23.0.0
+# flake8>=6.0.0
+
+# Note: For OCR functionality on Render, tesseract will be installed via buildpack
+# Local development: 
+# macOS: brew install tesseract
+# Ubuntu/Debian: sudo apt-get install tesseract-ocr
+# Windows: Download from https://github.com/UB-Mannheim/tesseract/wikigunicorn>=21.2.0
