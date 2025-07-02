@@ -21,17 +21,31 @@ CORS(app,
      origins=["*"],  # Allow all origins
      methods=["GET", "POST", "OPTIONS"],
      allow_headers=["Content-Type", "Authorization", "Accept", "X-Requested-With"],
-     supports_credentials=False)
+     supports_credentials=False,
+     expose_headers=["Content-Type", "Authorization"])
 
-# Additional CORS handling
+# Simpler, more direct CORS handling
 @app.after_request
 def after_request(response):
     """Add CORS headers to all responses"""
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept,X-Requested-With')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS,PUT,DELETE')
-    response.headers.add('Access-Control-Allow-Credentials', 'false')
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization,Accept,X-Requested-With"
+    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS,PUT,DELETE"
+    response.headers["Access-Control-Allow-Credentials"] = "false"
+    response.headers["Access-Control-Max-Age"] = "86400"
     return response
+
+# Global OPTIONS handler - this catches ALL OPTIONS requests
+@app.before_request
+def handle_preflight():
+    """Handle preflight OPTIONS requests globally"""
+    if request.method == "OPTIONS":
+        response = make_response()
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization,Accept,X-Requested-With"
+        response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS,PUT,DELETE"
+        response.headers["Access-Control-Max-Age"] = "86400"
+        return response
 
 # Set up configuration
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
@@ -231,19 +245,18 @@ def diagnostics():
             "timestamp": datetime.now().isoformat()
         }), 500
 
-# Handle OPTIONS requests for analyze endpoint
-@app.route('/api/analyze', methods=['OPTIONS'])
-def analyze_options():
-    """Handle preflight OPTIONS requests for analyze endpoint"""
-    response = make_response()
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    response.headers.add('Access-Control-Allow-Headers', "Content-Type,Authorization,Accept,X-Requested-With")
-    response.headers.add('Access-Control-Allow-Methods', "POST,OPTIONS")
-    return response
+# Handle OPTIONS requests for analyze endpoint - Remove this since we have global handler
+# @app.route('/api/analyze', methods=['OPTIONS'])
+# def analyze_options():
+#     """Handle preflight OPTIONS requests for analyze endpoint"""
+#     response = make_response()
+#     response.headers.add("Access-Control-Allow-Origin", "*")
+#     response.headers.add('Access-Control-Allow-Headers', "Content-Type,Authorization,Accept,X-Requested-With")
+#     response.headers.add('Access-Control-Allow-Methods', "POST,OPTIONS")
+#     return response
 
-# Main analysis endpoint
+# Main analysis endpoint - simplified
 @app.route('/api/analyze', methods=['POST'])
-@cross_origin()
 def analyze():
     """Main company analysis endpoint"""
     try:
@@ -319,18 +332,10 @@ def analyze():
             "details": str(e) if app.debug else "Contact support if this persists"
         }), 500
 
-# File upload endpoint (for future use)
-@app.route('/upload', methods=['POST', 'OPTIONS'])
-@cross_origin()
+# File upload endpoint (for future use) - simplified
+@app.route('/upload', methods=['POST'])
 def upload_file():
     """Handle file uploads for OCR processing"""
-    if request.method == 'OPTIONS':
-        response = make_response()
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        response.headers.add('Access-Control-Allow-Headers', "Content-Type")
-        response.headers.add('Access-Control-Allow-Methods', "POST,OPTIONS")
-        return response
-    
     try:
         if 'file' not in request.files:
             return jsonify({"error": "No file provided"}), 400
