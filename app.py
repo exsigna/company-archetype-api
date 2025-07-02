@@ -144,14 +144,13 @@ def test_ocr():
         # Get Tesseract version and environment info - convert to string
         try:
             version_info = str(pytesseract.get_tesseract_version())
-            command_line_version = pytesseract.image_to_string('', config='--version') if hasattr(pytesseract, 'image_to_string') else version_info
+            command_line_version = version_info
         except Exception as version_error:
             version_info = f"Version check failed: {str(version_error)}"
             command_line_version = "Unknown"
         
         # Test basic OCR with a simple test
         try:
-            # Create a simple test - this will test if OCR pipeline works
             test_result = "TestOCR"
             ocr_working = True
         except Exception as ocr_error:
@@ -768,3 +767,60 @@ def upload_file():
                     "error": "OCR processing failed",
                     "details": str(ocr_error)
                 }), 500
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": "Upload failed",
+            "details": str(e)
+        }), 500
+
+# Error handlers
+@app.errorhandler(413)
+def too_large(e):
+    return jsonify({
+        "error": "File too large",
+        "max_size": "16MB"
+    }), 413
+
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({
+        "error": "Endpoint not found",
+        "available_endpoints": [
+            "/health",
+            "/test-ocr", 
+            "/test-pdf",
+            "/diagnostics",
+            "/api/config",
+            "/api/years/{company_number}",
+            "/api/company/{company_number}/years",
+            "/api/available-years?company={number}",
+            "/api/documents/{company_number}",
+            "/api/filings/{company_number}",
+            "/api/analyze",
+            "/upload"
+        ]
+    }), 404
+
+@app.errorhandler(500)
+def internal_error(e):
+    return jsonify({
+        "error": "Internal server error",
+        "message": "Something went wrong on our end"
+    }), 500
+
+if __name__ == '__main__':
+    # Development server
+    port = int(os.environ.get('PORT', 10000))
+    debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    
+    logger.info(f"Starting Flask app on port {port}")
+    logger.info(f"Debug mode: {debug}")
+    logger.info(f"Analysis modules available: {ANALYSIS_AVAILABLE}")
+    
+    app.run(
+        host='0.0.0.0',
+        port=port,
+        debug=debug
+    )
