@@ -1,10 +1,9 @@
-# Use Python 3.11 slim as base (more stable than 3.13)
+# Use Python 3.11 slim as base
 FROM python:3.11-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
 
 # Install system dependencies including OCR
 RUN apt-get update && apt-get install -y \
@@ -18,8 +17,17 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Verify tesseract installation
+# Find and set correct TESSDATA_PREFIX
+RUN find /usr -name "tessdata" -type d 2>/dev/null | head -1 > /tmp/tessdata_path
+RUN export TESSDATA_PREFIX=$(cat /tmp/tessdata_path) && echo "TESSDATA_PREFIX=$TESSDATA_PREFIX" >> /etc/environment
+
+# Set TESSDATA_PREFIX environment variable correctly
+ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5.00/tessdata
+
+# Verify tesseract installation and find actual tessdata location
 RUN tesseract --version
+RUN find /usr -name "*.traineddata" -type f 2>/dev/null | head -5
+RUN ls -la /usr/share/tesseract-ocr/*/tessdata/ 2>/dev/null || echo "Checking tessdata location..."
 
 # Set work directory
 WORKDIR /app
