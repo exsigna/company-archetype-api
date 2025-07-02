@@ -1,101 +1,108 @@
 #!/usr/bin/env python3
 """
-File operations manager for the analysis tool
-Handles all file I/O operations, directory management, and cleanup
+File Manager for Strategic Analysis Tool
+Handles file operations, saving results, and managing temporary files
 """
 
 import json
-import shutil
-import os
 import logging
+import os
+import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, List
+from typing import Dict, List, Optional, Any
 
-from config import RESULTS_FOLDER, TEMP_FOLDER
+from config import OUTPUT_DIR, TEMP_FOLDER, DATA_DIR
 
-# Set up logging
 logger = logging.getLogger(__name__)
 
 
 class FileManager:
-    """Manages all file operations for the analysis tool"""
+    """Manages file operations for the analysis tool"""
     
     def __init__(self):
-        self.results_folder = RESULTS_FOLDER
-        self.temp_folder = TEMP_FOLDER
-        self._ensure_directories()
+        """Initialize the file manager"""
+        self.output_dir = OUTPUT_DIR
+        self.temp_dir = TEMP_FOLDER
+        self.data_dir = DATA_DIR
+        
+        # Ensure directories exist
+        for directory in [self.output_dir, self.temp_dir, self.data_dir]:
+            directory.mkdir(parents=True, exist_ok=True)
+        
+        logger.info("File manager initialized")
     
-    def _ensure_directories(self):
-        """Ensure required directories exist"""
-        self.results_folder.mkdir(exist_ok=True)
-        self.temp_folder.mkdir(exist_ok=True)
+    def create_company_folder(self, company_number: str, company_name: str = None) -> Path:
+        """
+        Create a folder for company results
+        
+        Args:
+            company_number: Company registration number
+            company_name: Optional company name for folder naming
+            
+        Returns:
+            Path to the created folder
+        """
+        # Clean company name for folder name
+        if company_name:
+            # Remove special characters and limit length
+            clean_name = "".join(c for c in company_name if c.isalnum() or c in (' ', '-', '_'))
+            clean_name = clean_name.replace(' ', '_').strip('_')[:50]
+            folder_name = f"{company_number}_{clean_name}"
+        else:
+            folder_name = company_number
+        
+        # Add timestamp to ensure uniqueness
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        folder_name = f"{folder_name}_{timestamp}"
+        
+        folder_path = self.output_dir / folder_name
+        folder_path.mkdir(parents=True, exist_ok=True)
+        
+        logger.info(f"Created company folder: {folder_path}")
+        return folder_path
     
-    def _get_timestamp(self) -> str:
-        """Generate timestamp string for filenames"""
-        return datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    def save_analysis_results(self, firm_name: str, company_number: str, 
-                            analysis_data: Dict, filename_suffix: str = "") -> str:
+    def save_analysis_results(self, company_name: str, company_number: str, 
+                             analysis_data: Dict[str, Any]) -> Optional[str]:
         """
         Save analysis results to JSON file
         
         Args:
-            firm_name: Name of the firm
+            company_name: Company name
             company_number: Company registration number
-            analysis_data: Data to save
-            filename_suffix: Optional suffix for filename
+            analysis_data: Analysis results to save
             
         Returns:
-            Path to saved file, empty string if failed
+            Path to saved file or None if failed
         """
-        timestamp = self._get_timestamp()
-        
-        if filename_suffix:
-            filename = f"{company_number}_{filename_suffix}_{timestamp}.json"
-        else:
-            filename = f"{company_number}_analysis_{timestamp}.json"
-        
-        filepath = self.results_folder / filename
-        
-        # Add metadata to the data
-        enhanced_data = analysis_data.copy()
-        enhanced_data.update({
-            "firm_name": firm_name,
-            "company_number": company_number,
-            "analysis_timestamp": timestamp,
-            "file_metadata": {
-                "created_at": datetime.now().isoformat(),
-                "filename": filename,
-                "file_size": None  # Will be set after saving
-            }
-        })
-        
         try:
-            with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(enhanced_data, f, indent=2, ensure_ascii=False, default=str)
+            company_folder = self.create_company_folder(company_number, company_name)
             
-            # Update file size in metadata
-            file_size = filepath.stat().st_size
-            enhanced_data["file_metadata"]["file_size"] = file_size
+            # Add metadata
+            analysis_data_with_meta = {
+                "metadata": {
+                    "company_name": company_name,
+                    "company_number": company_number,
+                    "analysis_timestamp": datetime.now().isoformat(),
+                    "file_type": "analysis_results"
+                },
+                "analysis": analysis_data
+            }
             
-            # Save again with file size
-            with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(enhanced_data, f, indent=2, ensure_ascii=False, default=str)
+            # Save main results
+            results_file = company_folder / "analysis_results.json"
+            with open(results_file, 'w', encoding='utf-8') as f:
+                json.dump(analysis_data_with_meta, f, indent=2, ensure_ascii=False, default=str)
             
-            logger.info(f"Analysis results saved to: {filepath}")
-            logger.info(f"File size: {file_size:,} bytes")
-            print(f"Analysis results saved to: {filepath}")
-            print(f"File size: {file_size:,} bytes")
-            return str(filepath)
+            logger.info(f"Analysis results saved: {results_file}")
+            return str(results_file)
             
         except Exception as e:
-            logger.error(f"Error saving analysis results: {e}")
-            print(f"Error saving analysis results: {e}")
-            return ""
+            logger.error(f"Failed to save analysis results: {e}")
+            return None
     
     def save_text_report(self, company_number: str, report_content: str, 
-                        report_type: str = "report") -> str:
+                        report_type: str = "report") -> Optional[str]:
         """
         Save text report to file
         
@@ -105,274 +112,423 @@ class FileManager:
             report_type: Type of report (for filename)
             
         Returns:
-            Path to saved file, empty string if failed
+            Path to saved file or None if failed
         """
-        timestamp = self._get_timestamp()
-        filename = f"{company_number}_{report_type}_{timestamp}.txt"
-        filepath = self.results_folder / filename
-        
         try:
-            with open(filepath, "w", encoding="utf-8") as f:
+            # Find the most recent company folder
+            company_folders = [d for d in self.output_dir.iterdir() 
+                             if d.is_dir() and d.name.startswith(company_number)]
+            
+            if not company_folders:
+                # Create new folder if none exists
+                company_folder = self.create_company_folder(company_number)
+            else:
+                # Use most recent folder
+                company_folder = sorted(company_folders, key=lambda x: x.stat().st_mtime)[-1]
+            
+            # Save report
+            report_file = company_folder / f"{report_type}.txt"
+            with open(report_file, 'w', encoding='utf-8') as f:
                 f.write(report_content)
             
-            file_size = filepath.stat().st_size
-            logger.info(f"Report saved to: {filepath}")
-            logger.info(f"File size: {file_size:,} bytes")
-            print(f"Report saved to: {filepath}")
-            print(f"File size: {file_size:,} bytes")
-            return str(filepath)
+            logger.info(f"Text report saved: {report_file}")
+            return str(report_file)
             
         except Exception as e:
-            logger.error(f"Error saving report: {e}")
-            print(f"Error saving report: {e}")
-            return ""
-    
-    def save_debug_data(self, company_number: str, debug_data: Dict, 
-                       debug_type: str = "debug") -> str:
-        """
-        Save debug data for troubleshooting
-        
-        Args:
-            company_number: Company registration number
-            debug_data: Debug data to save
-            debug_type: Type of debug data (for filename)
-            
-        Returns:
-            Path to saved file, empty string if failed
-        """
-        timestamp = self._get_timestamp()
-        filename = f"{company_number}_{debug_type}_{timestamp}.json"
-        filepath = self.results_folder / filename
-        
-        try:
-            with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(debug_data, f, indent=2, ensure_ascii=False, default=str)
-            
-            logger.info(f"Debug data saved to: {filepath}")
-            print(f"Debug data saved to: {filepath}")
-            return str(filepath)
-            
-        except Exception as e:
-            logger.error(f"Error saving debug data: {e}")
-            print(f"Error saving debug data: {e}")
-            return ""
-    
-    def save_combined_content(self, company_number: str, content: str) -> str:
-        """
-        Save combined content for debugging AI analysis
-        
-        Args:
-            company_number: Company registration number
-            content: Combined content text
-            
-        Returns:
-            Path to saved file, empty string if failed
-        """
-        filename = f"{company_number}_combined_content.txt"
-        filepath = self.results_folder / filename
-        
-        try:
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.write(content)
-            
-            file_size = filepath.stat().st_size
-            logger.info(f"Combined content saved for debugging: {filepath}")
-            logger.info(f"Content size: {file_size:,} bytes")
-            print(f"Combined content saved for debugging: {filepath}")
-            print(f"Content size: {file_size:,} bytes")
-            return str(filepath)
-            
-        except Exception as e:
-            logger.error(f"Could not save debug content: {e}")
-            print(f"Could not save debug content: {e}")
-            return ""
-    
-    def create_temp_directory(self, company_number: str) -> Path:
-        """
-        Create temporary directory for a company's downloads
-        
-        Args:
-            company_number: Company registration number
-            
-        Returns:
-            Path to created directory
-        """
-        # Validate company number
-        if not self._validate_company_number(company_number):
-            logger.warning(f"Invalid company number format: {company_number}")
-        
-        temp_dir = self.temp_folder / f"{company_number}_accounts"
-        temp_dir.mkdir(parents=True, exist_ok=True)
-        return temp_dir
-    
-    def _validate_company_number(self, company_number: str) -> bool:
-        """Validate UK company number format"""
-        import re
-        # UK company numbers are typically 8 digits, sometimes with leading zeros
-        # or 2 letters followed by 6 digits
-        pattern = r'^\d{8}$|^[A-Z]{2}\d{6}$'
-        return bool(re.match(pattern, company_number.upper().zfill(8)))
-    
-    def cleanup_temp_directory(self, temp_path: str) -> bool:
-        """
-        Clean up temporary directory after processing
-        
-        Args:
-            temp_path: Path to temporary directory
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            if os.path.exists(temp_path):
-                shutil.rmtree(temp_path)
-                logger.info(f"Cleaned up temporary directory: {temp_path}")
-                print(f"Cleaned up temporary directory: {temp_path}")
-                return True
-            return True
-        except Exception as e:
-            logger.error(f"Could not delete temporary directory: {e}")
-            print(f"Could not delete temporary directory: {e}")
-            return False
-    
-    def load_analysis_results(self, filepath: str) -> Optional[Dict]:
-        """
-        Load previously saved analysis results
-        
-        Args:
-            filepath: Path to analysis results file
-            
-        Returns:
-            Loaded data or None if failed
-        """
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Error loading analysis results: {e}")
-            print(f"Error loading analysis results: {e}")
+            logger.error(f"Failed to save text report: {e}")
             return None
     
-    def list_analysis_files(self, company_number: Optional[str] = None) -> List[str]:
+    def save_json_results(self, company_number: str, data: Dict[str, Any], 
+                         filename: str = "summary") -> Optional[str]:
         """
-        List analysis files in results directory
+        Save JSON data to file
+        
+        Args:
+            company_number: Company registration number
+            data: Data to save
+            filename: Filename (without extension)
+            
+        Returns:
+            Path to saved file or None if failed
+        """
+        try:
+            # Find the most recent company folder
+            company_folders = [d for d in self.output_dir.iterdir() 
+                             if d.is_dir() and d.name.startswith(company_number)]
+            
+            if not company_folders:
+                company_folder = self.create_company_folder(company_number)
+            else:
+                company_folder = sorted(company_folders, key=lambda x: x.stat().st_mtime)[-1]
+            
+            # Save JSON data
+            json_file = company_folder / f"{filename}.json"
+            with open(json_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+            
+            logger.info(f"JSON results saved: {json_file}")
+            return str(json_file)
+            
+        except Exception as e:
+            logger.error(f"Failed to save JSON results: {e}")
+            return None
+    
+    def save_raw_content(self, company_number: str, content: str, 
+                        source_filename: str) -> Optional[str]:
+        """
+        Save raw extracted content to file
+        
+        Args:
+            company_number: Company registration number
+            content: Raw content text
+            source_filename: Original filename
+            
+        Returns:
+            Path to saved file or None if failed
+        """
+        try:
+            # Find the most recent company folder
+            company_folders = [d for d in self.output_dir.iterdir() 
+                             if d.is_dir() and d.name.startswith(company_number)]
+            
+            if not company_folders:
+                company_folder = self.create_company_folder(company_number)
+            else:
+                company_folder = sorted(company_folders, key=lambda x: x.stat().st_mtime)[-1]
+            
+            # Create raw content subfolder
+            raw_folder = company_folder / "raw_content"
+            raw_folder.mkdir(exist_ok=True)
+            
+            # Save content
+            content_file = raw_folder / f"{Path(source_filename).stem}_content.txt"
+            with open(content_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            logger.info(f"Raw content saved: {content_file}")
+            return str(content_file)
+            
+        except Exception as e:
+            logger.error(f"Failed to save raw content: {e}")
+            return None
+    
+    def load_analysis_results(self, file_path: str) -> Optional[Dict[str, Any]]:
+        """
+        Load analysis results from JSON file
+        
+        Args:
+            file_path: Path to the JSON file
+            
+        Returns:
+            Analysis data or None if failed
+        """
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            logger.info(f"Analysis results loaded: {file_path}")
+            return data
+            
+        except Exception as e:
+            logger.error(f"Failed to load analysis results: {e}")
+            return None
+    
+    def list_company_analyses(self, company_number: str = None) -> List[Dict[str, Any]]:
+        """
+        List all available analyses
         
         Args:
             company_number: Optional filter by company number
             
         Returns:
-            List of file paths
+            List of analysis metadata
         """
+        analyses = []
+        
         try:
-            pattern = f"{company_number}_*" if company_number else "*"
-            files = list(self.results_folder.glob(f"{pattern}.json"))
-            return [str(f) for f in sorted(files, reverse=True)]  # Most recent first
+            for folder in self.output_dir.iterdir():
+                if not folder.is_dir():
+                    continue
+                
+                # Check if this is a company folder
+                if company_number and not folder.name.startswith(company_number):
+                    continue
+                
+                # Look for analysis results
+                results_file = folder / "analysis_results.json"
+                if results_file.exists():
+                    try:
+                        with open(results_file, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                        
+                        metadata = data.get('metadata', {})
+                        analyses.append({
+                            "folder": str(folder),
+                            "company_name": metadata.get('company_name', 'Unknown'),
+                            "company_number": metadata.get('company_number', 'Unknown'),
+                            "analysis_date": metadata.get('analysis_timestamp', 'Unknown'),
+                            "files": [f.name for f in folder.iterdir() if f.is_file()]
+                        })
+                        
+                    except Exception as e:
+                        logger.warning(f"Could not read analysis from {folder}: {e}")
+                        continue
+            
+            # Sort by analysis date (most recent first)
+            analyses.sort(key=lambda x: x['analysis_date'], reverse=True)
+            
         except Exception as e:
-            logger.error(f"Error listing analysis files: {e}")
-            print(f"Error listing analysis files: {e}")
-            return []
+            logger.error(f"Failed to list analyses: {e}")
+        
+        return analyses
     
-    def get_file_info(self, filepath: str) -> Dict:
+    def cleanup_temp_files(self, older_than_hours: int = 24) -> int:
         """
-        Get information about a file
+        Clean up temporary files older than specified hours
         
         Args:
-            filepath: Path to file
+            older_than_hours: Remove files older than this many hours
             
         Returns:
-            Dict with file information
+            Number of files cleaned up
         """
-        try:
-            path = Path(filepath)
-            stat = path.stat()
-            return {
-                "filename": path.name,
-                "filepath": str(path),
-                "size_bytes": stat.st_size,
-                "size_mb": round(stat.st_size / (1024 * 1024), 2),
-                "created": datetime.fromtimestamp(stat.st_ctime).isoformat(),
-                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                "exists": True
-            }
-        except Exception as e:
-            return {
-                "filename": Path(filepath).name,
-                "filepath": filepath,
-                "error": str(e),
-                "exists": False
-            }
-    
-    def archive_old_files(self, days_old: int = 30) -> int:
-        """
-        Archive files older than specified days
-        
-        Args:
-            days_old: Archive files older than this many days
-            
-        Returns:
-            Number of files archived
-        """
-        archive_dir = self.results_folder / "archive"
-        archive_dir.mkdir(exist_ok=True)
-        
-        cutoff_time = datetime.now().timestamp() - (days_old * 24 * 60 * 60)
-        archived_count = 0
+        count = 0
+        cutoff_time = datetime.now().timestamp() - (older_than_hours * 3600)
         
         try:
-            for file_path in self.results_folder.glob("*.json"):
-                if file_path.stat().st_mtime < cutoff_time:
-                    archive_path = archive_dir / file_path.name
-                    shutil.move(str(file_path), str(archive_path))
-                    archived_count += 1
-            
-            if archived_count > 0:
-                logger.info(f"Archived {archived_count} files older than {days_old} days")
-                print(f"Archived {archived_count} files older than {days_old} days")
-            
-            return archived_count
-            
-        except Exception as e:
-            logger.error(f"Error archiving files: {e}")
-            print(f"Error archiving files: {e}")
-            return 0
-    
-    def get_storage_summary(self) -> Dict:
-        """
-        Get summary of storage usage
-        
-        Returns:
-            Dict with storage information
-        """
-        summary = {
-            "results_folder": str(self.results_folder),
-            "temp_folder": str(self.temp_folder),
-            "total_files": 0,
-            "total_size_bytes": 0,
-            "total_size_mb": 0,
-            "file_types": {}
-        }
-        
-        try:
-            for file_path in self.results_folder.rglob("*"):
+            for file_path in self.temp_dir.iterdir():
                 if file_path.is_file():
-                    summary["total_files"] += 1
-                    file_size = file_path.stat().st_size
-                    summary["total_size_bytes"] += file_size
-                    
-                    # Count by file extension
-                    ext = file_path.suffix.lower()
-                    if ext not in summary["file_types"]:
-                        summary["file_types"][ext] = {"count": 0, "size_bytes": 0}
-                    summary["file_types"][ext]["count"] += 1
-                    summary["file_types"][ext]["size_bytes"] += file_size
+                    try:
+                        if file_path.stat().st_mtime < cutoff_time:
+                            file_path.unlink()
+                            count += 1
+                    except Exception as e:
+                        logger.warning(f"Could not delete {file_path}: {e}")
             
-            summary["total_size_mb"] = round(summary["total_size_bytes"] / (1024 * 1024), 2)
-            
-            # Convert file type sizes to MB
-            for ext_info in summary["file_types"].values():
-                ext_info["size_mb"] = round(ext_info["size_bytes"] / (1024 * 1024), 2)
+            logger.info(f"Cleaned up {count} temporary files")
             
         except Exception as e:
-            summary["error"] = str(e)
+            logger.error(f"Error during temp file cleanup: {e}")
         
-        return summary
+        return count
+    
+    def get_temp_file_path(self, filename: str) -> Path:
+        """
+        Get path for a temporary file
+        
+        Args:
+            filename: Name of the file
+            
+        Returns:
+            Path object for the temporary file
+        """
+        return self.temp_dir / filename
+    
+    def save_temp_file(self, content: bytes, filename: str) -> Optional[str]:
+        """
+        Save content to a temporary file
+        
+        Args:
+            content: File content as bytes
+            filename: Name of the file
+            
+        Returns:
+            Path to saved file or None if failed
+        """
+        try:
+            file_path = self.get_temp_file_path(filename)
+            
+            with open(file_path, 'wb') as f:
+                f.write(content)
+            
+            logger.debug(f"Temporary file saved: {file_path}")
+            return str(file_path)
+            
+        except Exception as e:
+            logger.error(f"Failed to save temporary file: {e}")
+            return None
+    
+    def create_analysis_summary(self, company_number: str) -> Optional[Dict[str, Any]]:
+        """
+        Create a summary of all analyses for a company
+        
+        Args:
+            company_number: Company registration number
+            
+        Returns:
+            Summary data or None if failed
+        """
+        try:
+            analyses = self.list_company_analyses(company_number)
+            
+            if not analyses:
+                return None
+            
+            summary = {
+                "company_number": company_number,
+                "total_analyses": len(analyses),
+                "latest_analysis": analyses[0] if analyses else None,
+                "analysis_history": analyses,
+                "summary_created": datetime.now().isoformat()
+            }
+            
+            return summary
+            
+        except Exception as e:
+            logger.error(f"Failed to create analysis summary: {e}")
+            return None
+    
+    def export_analysis(self, company_number: str, export_format: str = "json") -> Optional[str]:
+        """
+        Export analysis results in specified format
+        
+        Args:
+            company_number: Company registration number
+            export_format: Export format (json, txt, csv)
+            
+        Returns:
+            Path to exported file or None if failed
+        """
+        try:
+            analyses = self.list_company_analyses(company_number)
+            
+            if not analyses:
+                logger.warning(f"No analyses found for company {company_number}")
+                return None
+            
+            latest_analysis = analyses[0]
+            results_file = Path(latest_analysis['folder']) / "analysis_results.json"
+            
+            if not results_file.exists():
+                logger.error(f"Analysis results file not found: {results_file}")
+                return None
+            
+            # Load the analysis data
+            with open(results_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Export based on format
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            if export_format.lower() == "json":
+                export_file = self.output_dir / f"{company_number}_export_{timestamp}.json"
+                with open(export_file, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+            
+            elif export_format.lower() == "txt":
+                export_file = self.output_dir / f"{company_number}_export_{timestamp}.txt"
+                with open(export_file, 'w', encoding='utf-8') as f:
+                    f.write(f"Analysis Export for Company {company_number}\n")
+                    f.write("="*50 + "\n\n")
+                    f.write(json.dumps(data, indent=2, default=str))
+            
+            else:
+                logger.error(f"Unsupported export format: {export_format}")
+                return None
+            
+            logger.info(f"Analysis exported: {export_file}")
+            return str(export_file)
+            
+        except Exception as e:
+            logger.error(f"Failed to export analysis: {e}")
+            return None
+    
+    def get_storage_stats(self) -> Dict[str, Any]:
+        """
+        Get storage statistics
+        
+        Returns:
+            Dictionary with storage information
+        """
+        try:
+            stats = {
+                "output_dir": str(self.output_dir),
+                "temp_dir": str(self.temp_dir),
+                "data_dir": str(self.data_dir),
+                "total_companies": 0,
+                "total_analyses": 0,
+                "total_files": 0,
+                "total_size_mb": 0
+            }
+            
+            # Count companies and analyses
+            for folder in self.output_dir.iterdir():
+                if folder.is_dir():
+                    stats["total_companies"] += 1
+                    
+                    if (folder / "analysis_results.json").exists():
+                        stats["total_analyses"] += 1
+                    
+                    for file_path in folder.rglob("*"):
+                        if file_path.is_file():
+                            stats["total_files"] += 1
+                            stats["total_size_mb"] += file_path.stat().st_size / (1024 * 1024)
+            
+            # Round size
+            stats["total_size_mb"] = round(stats["total_size_mb"], 2)
+            
+            return stats
+            
+        except Exception as e:
+            logger.error(f"Failed to get storage stats: {e}")
+            return {"error": str(e)}
+
+
+# Convenience functions
+def save_analysis(company_name: str, company_number: str, analysis_data: Dict[str, Any]) -> Optional[str]:
+    """
+    Quick function to save analysis results
+    
+    Args:
+        company_name: Company name
+        company_number: Company registration number
+        analysis_data: Analysis results
+        
+    Returns:
+        Path to saved file or None if failed
+    """
+    file_manager = FileManager()
+    return file_manager.save_analysis_results(company_name, company_number, analysis_data)
+
+
+def load_analysis(file_path: str) -> Optional[Dict[str, Any]]:
+    """
+    Quick function to load analysis results
+    
+    Args:
+        file_path: Path to the analysis file
+        
+    Returns:
+        Analysis data or None if failed
+    """
+    file_manager = FileManager()
+    return file_manager.load_analysis_results(file_path)
+
+
+if __name__ == "__main__":
+    # Test the file manager
+    file_manager = FileManager()
+    
+    # Test creating company folder
+    test_folder = file_manager.create_company_folder("12345678", "Test Company Ltd")
+    print(f"Created test folder: {test_folder}")
+    
+    # Test saving analysis
+    test_data = {
+        "business_strategy": "Test Strategy",
+        "risk_strategy": "Test Risk",
+        "confidence": 0.85
+    }
+    
+    result = file_manager.save_analysis_results("Test Company Ltd", "12345678", test_data)
+    print(f"Analysis saved: {result}")
+    
+    # Get storage stats
+    stats = file_manager.get_storage_stats()
+    print(f"Storage stats: {stats}")
+    
+    # Cleanup test files
+    if test_folder.exists():
+        import shutil
+        shutil.rmtree(test_folder)
+        print("Test folder cleaned up")
