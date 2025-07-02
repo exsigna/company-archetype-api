@@ -1,3 +1,27 @@
+
+from flask import Flask
+import os
+import openai
+
+app = Flask(__name__)
+
+# --- OpenAI API Health Check Route ---
+@app.route("/check-openai")
+def check_openai():
+    try:
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if not openai_key or openai_key.startswith("your_"):
+            return "❌ API key missing or placeholder"
+
+        client = openai.OpenAI(api_key=openai_key)
+        models = client.models.list()
+        model_count = len(models.data) if hasattr(models, 'data') else 0
+        return f"✅ OpenAI API key is working. {model_count} models available."
+    except Exception as e:
+        return f"❌ OpenAI API test failed: {type(e).__name__}: {e}"
+# --- End of Health Check ---
+
+
 #!/usr/bin/env python3
 """
 AI Analyzer - Complete Debug Version
