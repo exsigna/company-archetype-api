@@ -28,6 +28,9 @@ RUN apt-get update && apt-get install -y \
     g++ \
     # File utilities
     file \
+    # Network utilities
+    curl \
+    wget \
     # Clean up
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -48,24 +51,35 @@ RUN TESSDATA_PATH=$(find /usr -name "tessdata" -type d 2>/dev/null | head -1) &&
     fi
 
 # Set environment variables with multiple fallback paths
-ENV TESSDATA_PREFIX=/usr/share/tessdata/
+ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata/
 ENV OMP_THREAD_LIMIT=1
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 
-# Download language data if missing
-RUN if [ ! -f /usr/share/tessdata/eng.traineddata ]; then \
+# Download language data if missing (check correct path first)
+RUN EXISTING_TESSDATA=$(find /usr -name "tessdata" -type d 2>/dev/null | head -1) && \
+    if [ -n "$EXISTING_TESSDATA" ] && [ -f "$EXISTING_TESSDATA/eng.traineddata" ]; then \
+        echo "Using existing tessdata at: $EXISTING_TESSDATA" && \
+        echo "export TESSDATA_PREFIX=$EXISTING_TESSDATA/" >> /etc/environment; \
+    elif [ ! -f /usr/share/tessdata/eng.traineddata ]; then \
         echo "Downloading English language data..." && \
         mkdir -p /usr/share/tessdata && \
         wget -q https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata \
              -O /usr/share/tessdata/eng.traineddata && \
         wget -q https://github.com/tesseract-ocr/tessdata/raw/main/osd.traineddata \
-             -O /usr/share/tessdata/osd.traineddata; \
+             -O /usr/share/tessdata/osd.traineddata && \
+        echo "export TESSDATA_PREFIX=/usr/share/tessdata/" >> /etc/environment; \
     fi
 
-# Verify OCR setup
-RUN tesseract --list-langs || echo "Language check failed" && \
-    ls -la /usr/share/tessdata/ || echo "No tessdata directory"
+# Verify OCR setup and show final tessdata location
+RUN echo "=== Tesseract Setup Verification ===" && \
+    tesseract --list-langs 2>/dev/null || echo "Language check failed" && \
+    echo "=== Available tessdata files ===" && \
+    find /usr -name "*.traineddata" -type f 2>/dev/null | head -10 && \
+    echo "=== Final TESSDATA_PREFIX ===" && \
+    source /etc/environment && echo "TESSDATA_PREFIX: $TESSDATA_PREFIX" && \
+    ls -la /usr/share/tessdata/ 2>/dev/null || echo "No /usr/share/tessdata/ directory" && \
+    ls -la /usr/share/tesseract-ocr/*/tessdata/ 2>/dev/null || echo "No tesseract-ocr tessdata found"
 
 # Copy requirements first for better Docker layer caching
 COPY requirements.txt .
