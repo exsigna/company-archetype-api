@@ -64,8 +64,8 @@ class AIArchetypeAnalyzer:
         }
 
     def _setup_client(self):
-        """Setup the AI client with extensive debugging"""
-        logger.info("🔧 AI CLIENT SETUP - Starting detailed initialization...")
+        """Setup the AI client with correct OpenAI 1.35.0 syntax"""
+        logger.info("🔧 AI CLIENT SETUP - Starting initialization...")
         
         try:
             # Check for OpenAI API key first
@@ -87,7 +87,12 @@ class AIArchetypeAnalyzer:
                     logger.info(f"✅ SUCCESS: OpenAI library imported, version: {getattr(openai, '__version__', 'unknown')}")
                     
                     logger.info("🚀 ATTEMPTING: Initialize OpenAI client...")
-                    self.client = openai.OpenAI(api_key=openai_key)
+                    # FIXED: Use correct OpenAI 1.35.0 syntax - no proxies parameter
+                    self.client = openai.OpenAI(
+                        api_key=openai_key,
+                        timeout=30.0,  # Add timeout instead of proxies
+                        max_retries=2   # Add retries instead of proxies
+                    )
                     self.client_type = "openai"
                     logger.info("✅ SUCCESS: OpenAI client initialized")
                     
@@ -100,7 +105,7 @@ class AIArchetypeAnalyzer:
                         return
                     except Exception as api_test_error:
                         logger.error(f"🚨 FAILED: OpenAI API test - {type(api_test_error).__name__}: {str(api_test_error)}")
-                        # Don't return here, continue to try other methods
+                        # Continue to try other methods
                         
                 except ImportError as import_error:
                     logger.error(f"🚨 FAILED: OpenAI import - {str(import_error)}")
