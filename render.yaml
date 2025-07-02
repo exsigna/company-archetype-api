@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: company-archetype-api
+    env: python
+    region: oregon
+    plan: standard
+    buildCommand: |
+      # Install system dependencies first
+      apt-get update
+      apt-get install -y tesseract-ocr tesseract-ocr-eng libtesseract-dev poppler-utils
+      
+      # Install Python dependencies
+      pip install -r requirements.txt
+      
+      # Verify tesseract installation
+      tesseract --version
+      
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    
+    envVars:
+      - key: TESSDATA_PREFIX
+        value: /usr/share/tesseract-ocr/4.00/tessdata
+      - key: PYTHONPATH
+        value: /opt/render/project/src
+        
+    # Environment variables from your .env file (add these)
+    # - key: CH_API_KEY
+    #   sync: false
+    # - key: OPENAI_API_KEY
+    #   sync: false
+    # - key: ANTHROPIC_API_KEY
+    #   sync: false
