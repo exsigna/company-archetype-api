@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """
 Flask API for Exsigna Integration - Company Archetype Analysis
-Deployment version for Render.com
+Deployment version for Render.com with CORS support
 """
 
-from flask import Flask, request, jsonify, make_response
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 import logging
 import os
 import tempfile
-import subprocess
-import sys
-import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -32,19 +30,12 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+# Enable CORS for all domains and all routes
+CORS(app, origins=["*"], methods=["GET", "POST", "OPTIONS"], allow_headers=["Content-Type", "Authorization"])
+
 # Configure Flask for production
 app.config['JSON_SORT_KEYS'] = False
 app.config['JSONIFY_PRETTYPRINT_REGULAR'] = True
-
-# CORS configuration - handle manually for better control
-@app.after_request
-def after_request(response):
-    """Add CORS headers to all responses"""
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, PUT, DELETE'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Accept, Authorization, X-Requested-With'
-    response.headers['Access-Control-Max-Age'] = '86400'
-    return response
 
 @app.route('/', methods=['GET'])
 def home():
@@ -53,10 +44,11 @@ def home():
         'service': 'Company Archetype Analysis API',
         'version': '1.0.0',
         'status': 'running',
+        'cors_enabled': True,
         'endpoints': {
             'analyze': '/api/analyze (POST)',
             'health': '/health (GET)',
-            'test_ocr': '/test-ocr (GET)'
+            'diagnostics': '/diagnostics (GET)'
         },
         'usage': 'Send POST to /api/analyze with {"company_number": "12345678", "years": [2020, 2021, 2022]}'
     })
@@ -70,187 +62,80 @@ def health_check():
         return jsonify({
             'status': 'healthy' if config_valid else 'configuration_error',
             'timestamp': datetime.now().isoformat(),
-            'config_valid': config_valid
+            'config_valid': config_valid,
+            'cors_enabled': True
         }), 200 if config_valid else 503
     except Exception as e:
         return jsonify({
             'status': 'error',
             'timestamp': datetime.now().isoformat(),
-            'error': str(e)
+            'error': str(e),
+            'cors_enabled': True
         }), 500
 
-@app.route('/test-ocr', methods=['GET'])
-def test_ocr():
-    """Test OCR functionality on Render"""
-    diagnostics = {}
-    
+@app.route('/diagnostics', methods=['GET'])
+def diagnostics():
+    """Detailed system diagnostics"""
     try:
-        # Test 1: Check if tesseract binary is available
-        result = subprocess.run(['tesseract', '--version'], 
-                               capture_output=True, text=True, timeout=10)
-        diagnostics['tesseract_binary'] = {
-            'available': result.returncode == 0,
-            'version': result.stdout if result.returncode == 0 else result.stderr,
-            'return_code': result.returncode,
-            'stdout': result.stdout,
-            'stderr': result.stderr
-        }
-    except FileNotFoundError:
-        diagnostics['tesseract_binary'] = {
-            'available': False,
-            'error': 'tesseract command not found',
-            'return_code': -1
-        }
-    except Exception as e:
-        diagnostics['tesseract_binary'] = {'error': str(e), 'available': False}
-    
-    try:
-        # Test 2: Check pytesseract import and config
-        import pytesseract
-        diagnostics['pytesseract'] = {
-            'import_success': True,
-            'version': pytesseract.__version__ if hasattr(pytesseract, '__version__') else 'unknown',
-            'module_path': pytesseract.__file__
-        }
-        
-        # Test pytesseract.get_tesseract_version()
-        try:
-            tess_version = pytesseract.get_tesseract_version()
-            diagnostics['pytesseract']['tesseract_version'] = str(tess_version)
-        except Exception as e:
-            diagnostics['pytesseract']['tesseract_version_error'] = str(e)
-            
-        # Test creating a simple image and OCR
-        try:
-            from PIL import Image
-            import io
-            
-            # Create a simple test image with text
-            img = Image.new('RGB', (200, 50), color='white')
-            
-            # Try OCR on test image
-            test_text = pytesseract.image_to_string(img, timeout=10)
-            diagnostics['pytesseract']['simple_ocr_test'] = {
-                'success': True,
-                'result': test_text or "(no text detected)",
-                'result_length': len(test_text) if test_text else 0
-            }
-        except Exception as e:
-            diagnostics['pytesseract']['simple_ocr_test'] = {
-                'success': False,
-                'error': str(e)
-            }
-            
-    except ImportError as e:
-        diagnostics['pytesseract'] = {'import_error': str(e), 'import_success': False}
-    except Exception as e:
-        diagnostics['pytesseract'] = {'other_error': str(e), 'import_success': False}
-    
-    try:
-        # Test 3: Check pdf2image and poppler
-        from pdf2image import convert_from_bytes
-        diagnostics['pdf2image'] = {
-            'import_success': True,
-            'module_path': convert_from_bytes.__module__
-        }
-        
-        # Test poppler utilities
-        poppler_commands = ['pdftoppm', 'pdfinfo', 'pdftocairo']
-        poppler_results = {}
-        
-        for cmd in poppler_commands:
-            try:
-                result = subprocess.run([cmd, '-h'], 
-                                       capture_output=True, text=True, timeout=5)
-                poppler_results[cmd] = {
-                    'available': result.returncode in [0, 1],  # Some commands return 1 for help
-                    'return_code': result.returncode
-                }
-            except FileNotFoundError:
-                poppler_results[cmd] = {
-                    'available': False,
-                    'error': f'{cmd} command not found'
-                }
-            except Exception as e:
-                poppler_results[cmd] = {
-                    'available': False,
-                    'error': str(e)
-                }
-        
-        diagnostics['poppler_utils'] = poppler_results
-        
-    except ImportError as e:
-        diagnostics['pdf2image'] = {'import_error': str(e), 'import_success': False}
-    except Exception as e:
-        diagnostics['pdf2image'] = {'other_error': str(e), 'import_success': False}
-    
-    # Test 4: Environment info
-    diagnostics['environment'] = {
-        'python_version': sys.version,
-        'tessdata_prefix': os.environ.get('TESSDATA_PREFIX', 'not set'),
-        'path_dirs': os.environ.get('PATH', '').split(':'),
-        'ld_library_path': os.environ.get('LD_LIBRARY_PATH', 'not set'),
-        'render_service': os.environ.get('RENDER_SERVICE_NAME', 'not set'),
-        'render_env': os.environ.get('RENDER', 'not set')
-    }
-    
-    # Test 5: Check executable locations
-    executables = ['tesseract', 'pdftoppm', 'python3']
-    executable_paths = {}
-    
-    for exe in executables:
-        try:
-            path = shutil.which(exe)
-            executable_paths[exe] = path or 'not found in PATH'
-        except Exception as e:
-            executable_paths[exe] = f'error: {e}'
-    
-    diagnostics['executable_paths'] = executable_paths
-    
-    # Test 6: System package check
-    try:
-        # Check if apt packages are installed
-        result = subprocess.run(['dpkg', '-l'], 
-                               capture_output=True, text=True, timeout=10)
-        if result.returncode == 0:
-            installed_packages = result.stdout
-            ocr_packages = {}
-            for pkg in ['tesseract-ocr', 'poppler-utils', 'libtesseract-dev']:
-                ocr_packages[pkg] = pkg in installed_packages
-            diagnostics['installed_packages'] = ocr_packages
-        else:
-            diagnostics['installed_packages'] = {'error': 'dpkg command failed'}
-    except Exception as e:
-        diagnostics['installed_packages'] = {'error': str(e)}
-    
-    # Test 7: Memory usage
-    try:
+        import sys
+        import platform
         import psutil
+        
+        # Get memory info
         memory = psutil.virtual_memory()
-        diagnostics['memory'] = {
-            'total_gb': round(memory.total / (1024**3), 2),
-            'available_gb': round(memory.available / (1024**3), 2),
-            'percent_used': memory.percent
-        }
-    except ImportError:
-        diagnostics['memory'] = {'error': 'psutil not available'}
+        
+        # Check if required packages are importable
+        packages_status = {}
+        try:
+            import PyPDF2
+            packages_status['PyPDF2'] = 'available'
+        except ImportError:
+            packages_status['PyPDF2'] = 'missing'
+            
+        try:
+            import pdfplumber
+            packages_status['pdfplumber'] = 'available'
+        except ImportError:
+            packages_status['pdfplumber'] = 'missing'
+            
+        try:
+            import pytesseract
+            packages_status['pytesseract'] = 'available'
+        except ImportError:
+            packages_status['pytesseract'] = 'missing'
+            
+        try:
+            import pdf2image
+            packages_status['pdf2image'] = 'available'
+        except ImportError:
+            packages_status['pdf2image'] = 'missing'
+
+        return jsonify({
+            'system': {
+                'platform': platform.platform(),
+                'python_version': sys.version,
+                'memory_total_gb': round(memory.total / (1024**3), 2),
+                'memory_available_gb': round(memory.available / (1024**3), 2),
+                'memory_percent_used': memory.percent
+            },
+            'packages': packages_status,
+            'environment': {
+                'render_env': os.environ.get('RENDER', 'false'),
+                'port': os.environ.get('PORT', 'not set'),
+                'tessdata_prefix': os.environ.get('TESSDATA_PREFIX', 'not set')
+            },
+            'cors_enabled': True,
+            'timestamp': datetime.now().isoformat()
+        })
     except Exception as e:
-        diagnostics['memory'] = {'error': str(e)}
-    
-    return jsonify(diagnostics)
+        logger.error(f"Diagnostics error: {e}")
+        return jsonify({
+            'error': str(e),
+            'cors_enabled': True,
+            'timestamp': datetime.now().isoformat()
+        }), 500
 
-# Handle OPTIONS requests globally for all /api/* routes
-@app.route('/api/<path:path>', methods=['OPTIONS'])
-def handle_options(path):
-    """Handle CORS preflight requests for all API endpoints"""
-    response = make_response('', 200)
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, PUT, DELETE'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Accept, Authorization, X-Requested-With'
-    response.headers['Access-Control-Max-Age'] = '86400'
-    return response
-
-@app.route('/api/analyze', methods=['POST'])
+@app.route('/api/analyze', methods=['POST', 'OPTIONS'])
 def analyze_company():
     """
     Main API endpoint for Exsigna website integration
@@ -269,6 +154,10 @@ def analyze_company():
         "risk_strategy": {...}
     }
     """
+    # Handle preflight OPTIONS request
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
+    
     try:
         # Validate request
         if not request.is_json:
@@ -510,6 +399,24 @@ def method_not_allowed(error):
 @app.errorhandler(500)
 def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
+
+# Handle CORS preflight requests globally
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        response = jsonify({'status': 'ok'})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add('Access-Control-Allow-Headers', "*")
+        response.headers.add('Access-Control-Allow-Methods', "*")
+        return response
+
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    return response
 
 if __name__ == '__main__':
     # For local development
