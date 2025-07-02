@@ -25,14 +25,5 @@ pandas>=2.0.0
 # File handling
 pathlib2>=2.3.7
 
-# Development and testing (optional - comment out for production)
-# pytest>=7.0.0
-# pytest-cov>=4.0.0
-# black>=23.0.0
-# flake8>=6.0.0
-
-# Note: For OCR functionality on Render, tesseract will be installed via buildpack
-# Local development: 
-# macOS: brew install tesseract
-# Ubuntu/Debian: sudo apt-get install tesseract-ocr
-# Windows: Download from https://github.com/UB-Mannheim/tesseract/wiki
+# System monitoring (for diagnostics)
+psutil>=5.9.0
