@@ -1,38 +1,37 @@
-# Use Python 3.11 slim as base
+# Use Python 3.11 slim image
 FROM python:3.11-slim
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+# Set working directory
+WORKDIR /app
 
-# Install system dependencies including OCR
+# Install system dependencies for PDF processing and OCR
 RUN apt-get update && apt-get install -y \
+    # PDF processing utilities
+    poppler-utils \
+    # OCR and Tesseract
     tesseract-ocr \
     tesseract-ocr-eng \
     libtesseract-dev \
-    poppler-utils \
-    libpoppler-cpp-dev \
-    pkg-config \
+    # Image processing libraries
+    libpng-dev \
+    libjpeg-dev \
+    libfreetype6-dev \
+    zlib1g-dev \
+    # Additional fonts for better OCR
+    fonts-liberation \
+    # Build tools (may be needed for some Python packages)
     gcc \
     g++ \
+    # Clean up
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Find and set correct TESSDATA_PREFIX
-RUN find /usr -name "tessdata" -type d 2>/dev/null | head -1 > /tmp/tessdata_path
-RUN export TESSDATA_PREFIX=$(cat /tmp/tessdata_path) && echo "TESSDATA_PREFIX=$TESSDATA_PREFIX" >> /etc/environment
+# Set Tesseract environment variables
+ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5.00/tessdata/
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
 
-# Set TESSDATA_PREFIX environment variable correctly
-ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5.00/tessdata
-
-# Verify tesseract installation and find actual tessdata location
-RUN tesseract --version
-RUN find /usr -name "*.traineddata" -type f 2>/dev/null | head -5
-RUN ls -la /usr/share/tesseract-ocr/*/tessdata/ 2>/dev/null || echo "Checking tessdata location..."
-
-# Set work directory
-WORKDIR /app
-
-# Copy requirements first (for better caching)
+# Copy requirements first for better Docker layer caching
 COPY requirements.txt .
 
 # Install Python dependencies
@@ -41,13 +40,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create a non-root user
-RUN useradd --create-home --shell /bin/bash app
-RUN chown -R app:app /app
-USER app
+# Create temp directory for file processing
+RUN mkdir -p /app/temp
+
+# Set permissions
+RUN chmod -R 755 /app
 
 # Expose port
 EXPOSE 10000
 
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:10000/health || exit 1
+
 # Run the application
-CMD ["gunicorn", "--bind", "0.0.0.0:10000", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:10000", "--workers", "2", "--timeout", "300", "app:app"]
