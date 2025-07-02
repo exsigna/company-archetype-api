@@ -8,28 +8,64 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     # PDF processing utilities
     poppler-utils \
-    # OCR and Tesseract
+    # OCR and Tesseract with all language data
     tesseract-ocr \
     tesseract-ocr-eng \
+    tesseract-ocr-osd \
     libtesseract-dev \
     # Image processing libraries
     libpng-dev \
     libjpeg-dev \
     libfreetype6-dev \
     zlib1g-dev \
+    # Additional image tools
+    imagemagick \
     # Additional fonts for better OCR
     fonts-liberation \
+    fonts-dejavu-core \
     # Build tools (may be needed for some Python packages)
     gcc \
     g++ \
+    # File utilities
+    file \
     # Clean up
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Tesseract environment variables
-ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5.00/tessdata/
+# Find and set correct Tesseract data path
+RUN find /usr -name "*.traineddata" -type f 2>/dev/null | head -5 && \
+    find /usr -name "tessdata" -type d 2>/dev/null | head -5
+
+# Set Tesseract environment variables dynamically
+RUN TESSDATA_PATH=$(find /usr -name "tessdata" -type d 2>/dev/null | head -1) && \
+    if [ -n "$TESSDATA_PATH" ]; then \
+        echo "Found tessdata at: $TESSDATA_PATH" && \
+        echo "export TESSDATA_PREFIX=$TESSDATA_PATH/" >> /etc/environment; \
+    else \
+        echo "Creating tessdata directory" && \
+        mkdir -p /usr/share/tessdata && \
+        echo "export TESSDATA_PREFIX=/usr/share/tessdata/" >> /etc/environment; \
+    fi
+
+# Set environment variables with multiple fallback paths
+ENV TESSDATA_PREFIX=/usr/share/tessdata/
+ENV OMP_THREAD_LIMIT=1
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
+
+# Download language data if missing
+RUN if [ ! -f /usr/share/tessdata/eng.traineddata ]; then \
+        echo "Downloading English language data..." && \
+        mkdir -p /usr/share/tessdata && \
+        wget -q https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata \
+             -O /usr/share/tessdata/eng.traineddata && \
+        wget -q https://github.com/tesseract-ocr/tessdata/raw/main/osd.traineddata \
+             -O /usr/share/tessdata/osd.traineddata; \
+    fi
+
+# Verify OCR setup
+RUN tesseract --list-langs || echo "Language check failed" && \
+    ls -la /usr/share/tessdata/ || echo "No tessdata directory"
 
 # Copy requirements first for better Docker layer caching
 COPY requirements.txt .
