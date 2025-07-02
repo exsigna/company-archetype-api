@@ -8,6 +8,9 @@ from flask import Flask, request, jsonify, make_response
 import logging
 import os
 import tempfile
+import subprocess
+import sys
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -52,7 +55,8 @@ def home():
         'status': 'running',
         'endpoints': {
             'analyze': '/api/analyze (POST)',
-            'health': '/health (GET)'
+            'health': '/health (GET)',
+            'test_ocr': '/test-ocr (GET)'
         },
         'usage': 'Send POST to /api/analyze with {"company_number": "12345678", "years": [2020, 2021, 2022]}'
     })
@@ -74,6 +78,166 @@ def health_check():
             'timestamp': datetime.now().isoformat(),
             'error': str(e)
         }), 500
+
+@app.route('/test-ocr', methods=['GET'])
+def test_ocr():
+    """Test OCR functionality on Render"""
+    diagnostics = {}
+    
+    try:
+        # Test 1: Check if tesseract binary is available
+        result = subprocess.run(['tesseract', '--version'], 
+                               capture_output=True, text=True, timeout=10)
+        diagnostics['tesseract_binary'] = {
+            'available': result.returncode == 0,
+            'version': result.stdout if result.returncode == 0 else result.stderr,
+            'return_code': result.returncode,
+            'stdout': result.stdout,
+            'stderr': result.stderr
+        }
+    except FileNotFoundError:
+        diagnostics['tesseract_binary'] = {
+            'available': False,
+            'error': 'tesseract command not found',
+            'return_code': -1
+        }
+    except Exception as e:
+        diagnostics['tesseract_binary'] = {'error': str(e), 'available': False}
+    
+    try:
+        # Test 2: Check pytesseract import and config
+        import pytesseract
+        diagnostics['pytesseract'] = {
+            'import_success': True,
+            'version': pytesseract.__version__ if hasattr(pytesseract, '__version__') else 'unknown',
+            'module_path': pytesseract.__file__
+        }
+        
+        # Test pytesseract.get_tesseract_version()
+        try:
+            tess_version = pytesseract.get_tesseract_version()
+            diagnostics['pytesseract']['tesseract_version'] = str(tess_version)
+        except Exception as e:
+            diagnostics['pytesseract']['tesseract_version_error'] = str(e)
+            
+        # Test creating a simple image and OCR
+        try:
+            from PIL import Image
+            import io
+            
+            # Create a simple test image with text
+            img = Image.new('RGB', (200, 50), color='white')
+            
+            # Try OCR on test image
+            test_text = pytesseract.image_to_string(img, timeout=10)
+            diagnostics['pytesseract']['simple_ocr_test'] = {
+                'success': True,
+                'result': test_text or "(no text detected)",
+                'result_length': len(test_text) if test_text else 0
+            }
+        except Exception as e:
+            diagnostics['pytesseract']['simple_ocr_test'] = {
+                'success': False,
+                'error': str(e)
+            }
+            
+    except ImportError as e:
+        diagnostics['pytesseract'] = {'import_error': str(e), 'import_success': False}
+    except Exception as e:
+        diagnostics['pytesseract'] = {'other_error': str(e), 'import_success': False}
+    
+    try:
+        # Test 3: Check pdf2image and poppler
+        from pdf2image import convert_from_bytes
+        diagnostics['pdf2image'] = {
+            'import_success': True,
+            'module_path': convert_from_bytes.__module__
+        }
+        
+        # Test poppler utilities
+        poppler_commands = ['pdftoppm', 'pdfinfo', 'pdftocairo']
+        poppler_results = {}
+        
+        for cmd in poppler_commands:
+            try:
+                result = subprocess.run([cmd, '-h'], 
+                                       capture_output=True, text=True, timeout=5)
+                poppler_results[cmd] = {
+                    'available': result.returncode in [0, 1],  # Some commands return 1 for help
+                    'return_code': result.returncode
+                }
+            except FileNotFoundError:
+                poppler_results[cmd] = {
+                    'available': False,
+                    'error': f'{cmd} command not found'
+                }
+            except Exception as e:
+                poppler_results[cmd] = {
+                    'available': False,
+                    'error': str(e)
+                }
+        
+        diagnostics['poppler_utils'] = poppler_results
+        
+    except ImportError as e:
+        diagnostics['pdf2image'] = {'import_error': str(e), 'import_success': False}
+    except Exception as e:
+        diagnostics['pdf2image'] = {'other_error': str(e), 'import_success': False}
+    
+    # Test 4: Environment info
+    diagnostics['environment'] = {
+        'python_version': sys.version,
+        'tessdata_prefix': os.environ.get('TESSDATA_PREFIX', 'not set'),
+        'path_dirs': os.environ.get('PATH', '').split(':'),
+        'ld_library_path': os.environ.get('LD_LIBRARY_PATH', 'not set'),
+        'render_service': os.environ.get('RENDER_SERVICE_NAME', 'not set'),
+        'render_env': os.environ.get('RENDER', 'not set')
+    }
+    
+    # Test 5: Check executable locations
+    executables = ['tesseract', 'pdftoppm', 'python3']
+    executable_paths = {}
+    
+    for exe in executables:
+        try:
+            path = shutil.which(exe)
+            executable_paths[exe] = path or 'not found in PATH'
+        except Exception as e:
+            executable_paths[exe] = f'error: {e}'
+    
+    diagnostics['executable_paths'] = executable_paths
+    
+    # Test 6: System package check
+    try:
+        # Check if apt packages are installed
+        result = subprocess.run(['dpkg', '-l'], 
+                               capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            installed_packages = result.stdout
+            ocr_packages = {}
+            for pkg in ['tesseract-ocr', 'poppler-utils', 'libtesseract-dev']:
+                ocr_packages[pkg] = pkg in installed_packages
+            diagnostics['installed_packages'] = ocr_packages
+        else:
+            diagnostics['installed_packages'] = {'error': 'dpkg command failed'}
+    except Exception as e:
+        diagnostics['installed_packages'] = {'error': str(e)}
+    
+    # Test 7: Memory usage
+    try:
+        import psutil
+        memory = psutil.virtual_memory()
+        diagnostics['memory'] = {
+            'total_gb': round(memory.total / (1024**3), 2),
+            'available_gb': round(memory.available / (1024**3), 2),
+            'percent_used': memory.percent
+        }
+    except ImportError:
+        diagnostics['memory'] = {'error': 'psutil not available'}
+    except Exception as e:
+        diagnostics['memory'] = {'error': str(e)}
+    
+    return jsonify(diagnostics)
 
 # Handle OPTIONS requests globally for all /api/* routes
 @app.route('/api/<path:path>', methods=['OPTIONS'])
