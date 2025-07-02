@@ -1,47 +1,56 @@
-# Flask and web framework
-flask>=3.0.0
-flask-cors>=4.0.0
-gunicorn>=21.0.0
+# Flask web framework
+flask==2.3.3
+flask-cors==4.0.0
 
-# Companies House API
-requests>=2.31.0
+# OCR and image processing
+pytesseract==0.3.10
+Pillow==10.0.1
+pdf2image==1.16.3
 
-# PDF processing
-PyPDF2>=3.0.1
-pdfplumber>=0.10.3
-pdf2image>=1.16.3
+# HTTP requests and web scraping
+requests==2.31.0
+urllib3==2.0.7
 
-# OCR capabilities
-pytesseract>=0.3.10
+# Document processing
+PyPDF2==3.0.1
+pdfplumber==0.9.0
 
-# AI/ML for archetype analysis
-openai>=1.0.0
-anthropic>=0.7.0
+# Data processing and analysis
+pandas==2.1.4
+numpy==1.24.4
 
-# Data processing
-pandas>=2.0.0
-numpy>=1.24.0
+# Machine learning (for archetype analysis)
+scikit-learn==1.3.2
 
-# Text processing
-nltk>=3.8.1
-textblob>=0.17.1
+# Natural language processing
+nltk==3.8.1
+textblob==0.17.1
 
-# System utilities
-python-dotenv>=1.0.0
-psutil>=5.9.0
+# Web server
+gunicorn==21.2.0
 
-# Date/time handling
-python-dateutil>=2.8.2
+# Utilities
+python-dateutil==2.8.2
+pytz==2023.3
+werkzeug==2.3.7
 
 # File handling
-pathlib2>=2.3.7
+openpyxl==3.1.2
+xlrd==2.0.1
 
-# Configuration and environment
-pydantic>=2.0.0
+# API and data validation
+marshmallow==3.20.1
+jsonschema==4.19.2
+
+# Environment and configuration
+python-dotenv==1.0.0
 
 # Logging and monitoring
-structlog>=23.0.0
+structlog==23.2.0
 
-# Additional utilities for robust PDF handling
-pillow>=10.0.0
-reportlab>=4.0.0
+# Testing (optional, for development)
+pytest==7.4.3
+pytest-flask==1.3.0
+
+# Security
+cryptography==41.0.8
