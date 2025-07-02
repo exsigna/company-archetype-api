@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AI Analyzer - Streamlined for Business and Risk Strategy Archetype Classification Only
+AI Analyzer - Complete Debug Version
 """
 
 import logging
@@ -17,10 +17,10 @@ from config import (
 logger = logging.getLogger(__name__)
 
 class AIArchetypeAnalyzer:
-    """AI-powered analyzer focused specifically on archetype classification"""
+    """AI-powered analyzer with extensive debugging"""
     
     def __init__(self):
-        """Initialize the AI analyzer with proper API configuration"""
+        """Initialize the AI analyzer with detailed debugging"""
         self.client = None
         self.client_type = "fallback"
         self._setup_client()
@@ -64,144 +64,214 @@ class AIArchetypeAnalyzer:
         }
 
     def _setup_client(self):
-        """Setup the AI client with proper error handling"""
+        """Setup the AI client with extensive debugging"""
+        logger.info("🔧 AI CLIENT SETUP - Starting detailed initialization...")
+        
         try:
             # Check for OpenAI API key first
             openai_key = os.getenv('OPENAI_API_KEY')
+            logger.info(f"🔑 OpenAI API key check - Found: {bool(openai_key)}")
             
+            if openai_key:
+                logger.info(f"🔑 OpenAI key length: {len(openai_key)} characters")
+                logger.info(f"🔑 OpenAI key prefix: {openai_key[:15]}...")
+                logger.info(f"🔑 OpenAI key suffix: ...{openai_key[-8:]}")
+                
+                if openai_key.startswith('your_'):
+                    logger.warning("🚨 DETECTED: OpenAI API key is placeholder value!")
+                    
             if openai_key and openai_key.strip() and not openai_key.startswith('your_'):
                 try:
+                    logger.info("📦 ATTEMPTING: Import OpenAI library...")
                     import openai
+                    logger.info(f"✅ SUCCESS: OpenAI library imported, version: {getattr(openai, '__version__', 'unknown')}")
+                    
+                    logger.info("🚀 ATTEMPTING: Initialize OpenAI client...")
                     self.client = openai.OpenAI(api_key=openai_key)
                     self.client_type = "openai"
-                    logger.info("✅ OpenAI client initialized successfully")
-                    return
-                except ImportError:
-                    logger.warning("OpenAI library not installed")
-                except Exception as e:
-                    logger.warning(f"OpenAI setup failed: {e}")
+                    logger.info("✅ SUCCESS: OpenAI client initialized")
+                    
+                    # Test API connection with a simple call
+                    try:
+                        logger.info("🧪 TESTING: OpenAI API connection...")
+                        models_response = self.client.models.list()
+                        model_count = len(models_response.data) if hasattr(models_response, 'data') else 0
+                        logger.info(f"✅ SUCCESS: OpenAI API test passed, {model_count} models available")
+                        return
+                    except Exception as api_test_error:
+                        logger.error(f"🚨 FAILED: OpenAI API test - {type(api_test_error).__name__}: {str(api_test_error)}")
+                        # Don't return here, continue to try other methods
+                        
+                except ImportError as import_error:
+                    logger.error(f"🚨 FAILED: OpenAI import - {str(import_error)}")
+                except Exception as setup_error:
+                    logger.error(f"🚨 FAILED: OpenAI setup - {type(setup_error).__name__}: {str(setup_error)}")
+            else:
+                if not openai_key:
+                    logger.warning("⚠️ OpenAI API key not found in environment")
+                elif openai_key.startswith('your_'):
+                    logger.warning("⚠️ OpenAI API key is placeholder")
+                else:
+                    logger.warning("⚠️ OpenAI API key is empty or invalid")
             
-            # Fallback to Anthropic
+            # Try Anthropic as fallback
             anthropic_key = os.getenv('ANTHROPIC_API_KEY')
+            logger.info(f"🔑 Anthropic API key check - Found: {bool(anthropic_key and anthropic_key.strip())}")
+            
             if anthropic_key and anthropic_key.strip() and not anthropic_key.startswith('your_'):
                 try:
+                    logger.info("📦 ATTEMPTING: Import Anthropic library...")
                     import anthropic
+                    logger.info("✅ SUCCESS: Anthropic library imported")
+                    
+                    logger.info("🚀 ATTEMPTING: Initialize Anthropic client...")
                     self.client = anthropic.Anthropic(api_key=anthropic_key)
                     self.client_type = "anthropic"
-                    logger.info("✅ Anthropic client initialized successfully")
+                    logger.info("✅ SUCCESS: Anthropic client initialized")
                     return
-                except ImportError:
-                    logger.warning("Anthropic library not installed")
-                except Exception as e:
-                    logger.warning(f"Anthropic setup failed: {e}")
+                except ImportError as import_error:
+                    logger.error(f"🚨 FAILED: Anthropic import - {str(import_error)}")
+                except Exception as setup_error:
+                    logger.error(f"🚨 FAILED: Anthropic setup - {type(setup_error).__name__}: {str(setup_error)}")
             
-            logger.warning("⚠️  No valid AI API keys found - will use fallback analysis")
+            logger.warning("⚠️ FALLBACK: No valid AI clients available, using pattern analysis")
             self.client = None
             self.client_type = "fallback"
             
-        except Exception as e:
-            logger.error(f"Error setting up AI client: {e}")
+        except Exception as critical_error:
+            logger.error(f"🚨 CRITICAL: Error in AI setup - {type(critical_error).__name__}: {str(critical_error)}")
             self.client = None
             self.client_type = "fallback"
 
     def analyze_archetypes(self, content: str, company_name: str, company_number: str) -> Dict[str, Any]:
-        """
-        Analyze company archetypes focusing on dominant and secondary classifications
-        
-        Args:
-            content: Combined content from annual reports
-            company_name: Company name
-            company_number: Company registration number
-            
-        Returns:
-            Dictionary containing archetype analysis with dominant/secondary classifications
-        """
+        """Analyze company archetypes with detailed logging"""
         try:
-            logger.info(f"🏛️ Starting archetype analysis for {company_name}")
+            logger.info(f"🏛️ ARCHETYPE ANALYSIS START - Company: {company_name}")
+            logger.info(f"🔧 Client type available: {self.client_type}")
+            logger.info(f"📊 Content length: {len(content):,} characters")
+            logger.info(f"🤖 Client object: {type(self.client).__name__ if self.client else 'None'}")
             
             if self.client and self.client_type in ["openai", "anthropic"]:
-                # AI-powered analysis
-                business_analysis = self._classify_dominant_and_secondary_archetypes(
-                    content, self.business_archetypes, "Business Strategy"
-                )
-                risk_analysis = self._classify_dominant_and_secondary_archetypes(
-                    content, self.risk_archetypes, "Risk Strategy"
-                )
+                logger.info(f"🚀 ATTEMPTING: AI-powered analysis using {self.client_type}")
                 
-                return self._create_success_result(
-                    analysis_type="ai_archetype_classification",
-                    company_name=company_name,
-                    company_number=company_number,
-                    business_strategy_archetypes=business_analysis,
-                    risk_strategy_archetypes=risk_analysis,
-                    model_used=f"{self.client_type}_{DEFAULT_OPENAI_MODEL if self.client_type == 'openai' else DEFAULT_ANTHROPIC_MODEL}"
-                )
+                try:
+                    # Test business strategy analysis
+                    logger.info("🎯 STARTING: Business Strategy archetype classification...")
+                    business_analysis = self._classify_dominant_and_secondary_archetypes(
+                        content, self.business_archetypes, "Business Strategy"
+                    )
+                    logger.info(f"✅ COMPLETED: Business Strategy - {business_analysis.get('dominant', 'Unknown')}")
+                    
+                    # Test risk strategy analysis
+                    logger.info("🎯 STARTING: Risk Strategy archetype classification...")
+                    risk_analysis = self._classify_dominant_and_secondary_archetypes(
+                        content, self.risk_archetypes, "Risk Strategy"
+                    )
+                    logger.info(f"✅ COMPLETED: Risk Strategy - {risk_analysis.get('dominant', 'Unknown')}")
+                    
+                    return self._create_success_result(
+                        analysis_type="ai_archetype_classification",
+                        company_name=company_name,
+                        company_number=company_number,
+                        business_strategy_archetypes=business_analysis,
+                        risk_strategy_archetypes=risk_analysis,
+                        model_used=f"{self.client_type}_{DEFAULT_OPENAI_MODEL if self.client_type == 'openai' else DEFAULT_ANTHROPIC_MODEL}"
+                    )
+                    
+                except Exception as ai_error:
+                    logger.error(f"🚨 AI ANALYSIS FAILED: {type(ai_error).__name__}: {str(ai_error)}")
+                    logger.error(f"🚨 AI Error details: {repr(ai_error)}")
+                    logger.warning("🔄 FALLING BACK: to pattern-based analysis due to AI failure")
+                    return self._fallback_archetype_analysis(content, company_name, company_number)
             else:
-                logger.warning("🔄 Using fallback archetype analysis")
+                logger.warning(f"🔄 USING FALLBACK: No AI client available (type: {self.client_type})")
                 return self._fallback_archetype_analysis(content, company_name, company_number)
                 
         except Exception as e:
-            logger.error(f"❌ Error in analyze_archetypes: {e}")
+            logger.error(f"❌ CRITICAL ERROR in analyze_archetypes: {type(e).__name__}: {str(e)}")
             return self._create_error_result(str(e))
 
     def _classify_dominant_and_secondary_archetypes(self, content: str, archetype_dict: Dict[str, str], label: str) -> Dict[str, Any]:
-        """Classify and rank the top two matching archetypes with reasoning."""
+        """Classify archetypes with detailed API logging"""
         
-        # Format archetype definitions for the prompt
+        logger.info(f"🎯 CLASSIFYING: {label} using {self.client_type} API")
+        
+        # Prepare content (truncate for API limits)
+        content_sample = content[:8000]
+        logger.info(f"📝 Content sample length: {len(content_sample)} chars")
+        
+        # Format archetype definitions
         archetypes_text = "\n".join([f"- {name}: {definition}" for name, definition in archetype_dict.items()])
         
-        prompt = f"""You are an expert analyst evaluating a UK financial services firm. Your task is to identify the dominant and secondary {label} Archetypes based on the annual report content below. Please use UK English spelling and terminology throughout your response.
+        prompt = f"""You are an expert analyst evaluating a UK financial services firm. Your task is to identify the dominant and secondary {label} Archetypes based on the annual report content below.
 
 Available {label} Archetypes:
 {archetypes_text}
 
 Instructions:
-1. Analyse the content to understand the firm's strategic approach and priorities
-2. Select the DOMINANT archetype that most strongly characterises the firm's {label.lower()}
-3. Select a SECONDARY archetype that also applies but is less dominant (or "None" if no secondary archetype clearly applies)
-4. Provide detailed reasoning based on specific evidence from the text
-5. Focus on the period under review and any strategic changes mentioned
-6. Use UK English spelling (e.g., 'analyse', 'realise', 'organisation', 'behaviour')
+1. Analyse the content to understand the firm's strategic approach
+2. Select the DOMINANT archetype that most strongly characterises the firm
+3. Select a SECONDARY archetype (or "None" if no clear secondary)
+4. Provide detailed reasoning based on specific evidence
 
-Output format (exactly as shown):
+Output format:
 Dominant: <archetype_name>
 Secondary: <archetype_name or "None">
-Reasoning: <detailed explanation with specific evidence from the text>
+Reasoning: <detailed explanation>
 
 TEXT TO ANALYSE:
-{content[:8000]}"""
+{content_sample}"""
 
         try:
             if self.client_type == "openai":
+                logger.info(f"🚀 MAKING OpenAI API call for {label}...")
+                logger.info(f"📝 Prompt length: {len(prompt)} characters")
+                
                 response = self.client.chat.completions.create(
                     model=DEFAULT_OPENAI_MODEL,
                     messages=[
-                        {"role": "system", "content": f"You are an expert {label.lower()} analyst specialising in archetype classification for UK financial services firms. Always use UK English spelling and terminology in your responses."},
+                        {"role": "system", "content": f"You are an expert {label.lower()} analyst for UK financial services firms."},
                         {"role": "user", "content": prompt}
                     ],
                     max_tokens=1000,
                     temperature=AI_TEMPERATURE
                 )
+                
                 response_text = response.choices[0].message.content
+                logger.info(f"✅ OpenAI response received: {len(response_text)} characters")
+                logger.info(f"📄 OpenAI response preview: {response_text[:200]}...")
                 
             elif self.client_type == "anthropic":
+                logger.info(f"🚀 MAKING Anthropic API call for {label}...")
+                
                 response = self.client.messages.create(
                     model=DEFAULT_ANTHROPIC_MODEL,
                     max_tokens=1000,
                     temperature=AI_TEMPERATURE,
-                    system=f"You are an expert {label.lower()} analyst specialising in archetype classification for UK financial services firms. Always use UK English spelling and terminology in your responses.",
+                    system=f"You are an expert {label.lower()} analyst for UK financial services firms.",
                     messages=[{"role": "user", "content": prompt}]
                 )
+                
                 response_text = response.content[0].text
+                logger.info(f"✅ Anthropic response received: {len(response_text)} characters")
+                logger.info(f"📄 Anthropic response preview: {response_text[:200]}...")
             
-            return self._parse_archetype_response(response_text)
+            # Parse the response
+            result = self._parse_archetype_response(response_text)
+            logger.info(f"🎯 PARSED {label}: Dominant={result['dominant']}, Secondary={result.get('secondary', 'None')}")
             
-        except Exception as e:
-            logger.error(f"❌ AI archetype classification failed for {label}: {e}")
+            return result
+            
+        except Exception as api_error:
+            logger.error(f"🚨 API ERROR for {label}: {type(api_error).__name__}: {str(api_error)}")
+            logger.error(f"🚨 API Error repr: {repr(api_error)}")
+            
+            # Fallback to pattern analysis for this category
+            logger.warning(f"🔄 FALLBACK: Using pattern analysis for {label}")
             return self._fallback_single_archetype_analysis(content, archetype_dict, label)
 
     def _parse_archetype_response(self, response: str) -> Dict[str, str]:
-        """Extracts dominant and secondary archetype classifications from LLM output."""
+        """Parse archetype response from AI"""
         result = {"dominant": "", "secondary": "", "reasoning": ""}
         
         lines = response.strip().split('\n')
@@ -218,14 +288,13 @@ TEXT TO ANALYSE:
         return result
 
     def _fallback_archetype_analysis(self, content: str, company_name: str, company_number: str) -> Dict[str, Any]:
-        """Enhanced fallback archetype analysis using pattern matching"""
+        """Pattern-based fallback analysis"""
+        logger.info("🔄 EXECUTING: Pattern-based archetype analysis")
         
-        # Classify business archetypes
         business_analysis = self._fallback_single_archetype_analysis(
             content, self.business_archetypes, "Business Strategy"
         )
         
-        # Classify risk archetypes
         risk_analysis = self._fallback_single_archetype_analysis(
             content, self.risk_archetypes, "Risk Strategy"
         )
@@ -239,11 +308,11 @@ TEXT TO ANALYSE:
         )
 
     def _fallback_single_archetype_analysis(self, content: str, archetype_dict: Dict[str, str], label: str) -> Dict[str, str]:
-        """Fallback pattern-based archetype analysis for a single category"""
+        """Pattern-based analysis for single category"""
         content_lower = content.lower()
         archetype_scores = {}
         
-        # Define keyword patterns for each archetype
+        # Keyword patterns for each archetype
         if label == "Business Strategy":
             keyword_patterns = {
                 'Disciplined Specialist Growth': ['specialist', 'niche', 'underwriting', 'opportunistic', 'recycling'],
@@ -266,7 +335,7 @@ TEXT TO ANALYSE:
                 'Mission-Driven Prudence': ['stakeholder.*protection', 'community', 'social.*licence', 'mission']
             }
         
-        # Score each archetype based on keyword matches
+        # Score each archetype
         for archetype, patterns in keyword_patterns.items():
             score = 0
             for pattern in patterns:
@@ -274,7 +343,7 @@ TEXT TO ANALYSE:
                 score += matches
             archetype_scores[archetype] = score
         
-        # Sort by score and select top archetypes
+        # Select top archetypes
         sorted_archetypes = sorted(archetype_scores.items(), key=lambda x: x[1], reverse=True)
         
         dominant = sorted_archetypes[0][0] if sorted_archetypes and sorted_archetypes[0][1] > 0 else "Balance-Sheet Steward"
@@ -291,44 +360,10 @@ TEXT TO ANALYSE:
             "reasoning": reasoning
         }
 
-    def _extract_company_name(self, content: str, company_number: str) -> str:
-        """Enhanced company name extraction"""
-        patterns = [
-            rf'({re.escape(company_number)}.*?)(?:\n|Limited|Ltd)',
-            r'Together Personal Finance Limited',
-            r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+Limited)',
-            r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+Ltd)',
-            rf'Company\s+Name:?\s*([^\\n]+)',
-            rf'({company_number})\s+([^\\n]+Limited)',
-            r'Company.*?is\s+([A-Z][^.]*Limited)'
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, content[:3000], re.IGNORECASE)
-            if match:
-                if len(match.groups()) >= 2:
-                    name = match.group(2) if match.group(2) else match.group(1)
-                else:
-                    name = match.group(1) if '(' in pattern else match.group(0)
-                
-                name = re.sub(r'^\d+\s*', '', name.strip())
-                name = re.sub(r'\s+', ' ', name)
-                
-                if len(name) > 5 and 'limited' in name.lower():
-                    return name
-        
-        return f"Company {company_number}"
-
     def _create_success_result(self, analysis_type: str, company_name: str, 
                              company_number: str, business_strategy_archetypes: Dict[str, str],
                              risk_strategy_archetypes: Dict[str, str], model_used: str = None) -> Dict[str, Any]:
-        """Create standardized success result for archetype analysis"""
-        
-        # Generate summary text
-        analysis_text = self._generate_archetype_summary(
-            company_name, company_number, business_strategy_archetypes, risk_strategy_archetypes
-        )
-        
+        """Create success result"""
         result = {
             "success": True,
             "analysis_type": analysis_type,
@@ -336,7 +371,6 @@ TEXT TO ANALYSE:
             "company_number": company_number,
             "business_strategy_archetypes": business_strategy_archetypes,
             "risk_strategy_archetypes": risk_strategy_archetypes,
-            "analysis_text": analysis_text,
             "timestamp": datetime.now().isoformat(),
         }
         
@@ -345,59 +379,8 @@ TEXT TO ANALYSE:
             
         return result
 
-    def _generate_archetype_summary(self, company_name: str, company_number: str,
-                                   business_archetypes: Dict[str, str], 
-                                   risk_archetypes: Dict[str, str]) -> str:
-        """Generate a summary of the archetype analysis"""
-        
-        summary = f"""# ARCHETYPE CLASSIFICATION: {company_name} ({company_number})
-
-## BUSINESS STRATEGY ARCHETYPES
-
-**Dominant Archetype**: {business_archetypes['dominant']}
-- Definition: {self.business_archetypes.get(business_archetypes['dominant'], 'N/A')}
-
-"""
-        
-        if business_archetypes['secondary']:
-            summary += f"""**Secondary Archetype**: {business_archetypes['secondary']}
-- Definition: {self.business_archetypes.get(business_archetypes['secondary'], 'N/A')}
-
-"""
-        
-        summary += f"""**Analysis**: {business_archetypes['reasoning']}
-
-## RISK STRATEGY ARCHETYPES
-
-**Dominant Archetype**: {risk_archetypes['dominant']}
-- Definition: {self.risk_archetypes.get(risk_archetypes['dominant'], 'N/A')}
-
-"""
-        
-        if risk_archetypes['secondary']:
-            summary += f"""**Secondary Archetype**: {risk_archetypes['secondary']}
-- Definition: {self.risk_archetypes.get(risk_archetypes['secondary'], 'N/A')}
-
-"""
-        
-        summary += f"""**Analysis**: {risk_archetypes['reasoning']}
-
-## SUMMARY
-
-{company_name} demonstrates characteristics primarily aligned with:
-- **Business Strategy**: {business_archetypes['dominant']}
-- **Risk Strategy**: {risk_archetypes['dominant']}
-
-This archetype combination suggests a strategic approach focused on sustainable growth within defined risk parameters, consistent with regulatory expectations for UK financial services firms.
-
----
-*Analysis based on annual report content for the period under review*
-"""
-        
-        return summary
-
     def _create_error_result(self, error_msg: str) -> Dict[str, Any]:
-        """Create standardized error result"""
+        """Create error result"""
         return {
             "success": False,
             "error": error_msg,
