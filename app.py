@@ -1,3 +1,4 @@
+# OpenAI health check verified on Wed  2 Jul 2025 17:57:05 BST
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS, cross_origin
 import os
