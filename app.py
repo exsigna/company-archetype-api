@@ -4,7 +4,8 @@ Flask API for Exsigna Integration - Company Archetype Analysis
 Deployment version for Render.com
 """
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
+from flask_cors import CORS  # Add this import
 import logging
 import os
 import tempfile
@@ -28,6 +29,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+# Configure CORS - ADD THIS SECTION
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["*"],  # Allow all origins for now
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Accept", "Authorization"],
+        "supports_credentials": False
+    }
+})
+
+# Alternative manual CORS configuration if flask-cors isn't installed
+@app.after_request
+def after_request(response):
+    """Add CORS headers to all responses"""
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Accept,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    response.headers.add('Access-Control-Max-Age', '86400')  # Cache preflight for 24 hours
+    return response
 
 # Configure Flask for production
 app.config['JSON_SORT_KEYS'] = False
@@ -65,11 +86,23 @@ def health_check():
             'error': str(e)
         }), 500
 
-@app.route('/api/analyze', methods=['POST'])
+@app.route('/api/analyze', methods=['POST', 'OPTIONS'])  # Add OPTIONS method
 def analyze_company():
     """
     Main API endpoint for Exsigna website integration
     
+    Handle OPTIONS request for CORS preflight
+    """
+    # Handle CORS preflight request
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Accept,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+        response.headers.add('Access-Control-Max-Age', '86400')
+        return response
+    
+    """
     Expected payload:
     {
         "company_number": "02613335",
