@@ -9,6 +9,20 @@ from datetime import datetime
 import logging
 import traceback
 from werkzeug.utils import secure_filename
+from pathlib import Path
+import sys
+
+# Import your existing classes (you'll need to copy these files to your Flask project)
+try:
+    from companies_house_client import CompaniesHouseClient
+    from content_processor import ContentProcessor  
+    from pdf_extractor import PDFExtractor
+    from ai_analyzer import AIArchetypeAnalyzer
+    from config import validate_config
+    ANALYSIS_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"Analysis modules not available: {e}")
+    ANALYSIS_AVAILABLE = False
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -59,14 +73,20 @@ def root():
         "message": "Company Archetype Analysis API",
         "version": "1.0",
         "cors_enabled": True,
+        "analysis_available": ANALYSIS_AVAILABLE,
         "endpoints": {
             "health": "/health (GET)",
             "test-ocr": "/test-ocr (GET)",
             "test-pdf": "/test-pdf (GET)",
             "diagnostics": "/diagnostics (GET)",
+            "config": "/api/config (GET)",
             "analyze": "/api/analyze (POST)"
         },
-        "ocr_debug_available": True,
+        "features": {
+            "real_analysis": ANALYSIS_AVAILABLE,
+            "companies_house_integration": bool(os.environ.get('CH_API_KEY')),
+            "ai_analysis": bool(os.environ.get('OPENAI_API_KEY') or os.environ.get('ANTHROPIC_API_KEY'))
+        },
         "timestamp": datetime.now().isoformat()
     })
 
@@ -93,10 +113,13 @@ def health():
             "ocr_available": ocr_working,
             "tesseract_version": version_str,
             "ocr_test_result": ocr_test,
+            "analysis_modules": ANALYSIS_AVAILABLE,
             "environment": {
                 "TESSDATA_PREFIX": os.environ.get('TESSDATA_PREFIX'),
                 "LANG": os.environ.get('LANG'),
-                "LC_ALL": os.environ.get('LC_ALL')
+                "LC_ALL": os.environ.get('LC_ALL'),
+                "CH_API_KEY_SET": bool(os.environ.get('CH_API_KEY')),
+                "OPENAI_API_KEY_SET": bool(os.environ.get('OPENAI_API_KEY'))
             }
         })
     except Exception as e:
@@ -199,6 +222,30 @@ def test_pdf():
             "timestamp": datetime.now().isoformat()
         }), 200
 
+# API configuration endpoint
+@app.route('/api/config')
+def api_config():
+    """Get API configuration status"""
+    return jsonify({
+        "companies_house_configured": bool(os.environ.get('CH_API_KEY')),
+        "openai_configured": bool(os.environ.get('OPENAI_API_KEY')),
+        "anthropic_configured": bool(os.environ.get('ANTHROPIC_API_KEY')),
+        "analysis_modules_available": ANALYSIS_AVAILABLE,
+        "analysis_methods_available": [
+            "pattern_based",
+            "ai_powered" if (os.environ.get('OPENAI_API_KEY') or os.environ.get('ANTHROPIC_API_KEY')) else None
+        ],
+        "pdf_extraction_methods": ["pypdf2", "pdfplumber", "ocr"] if ANALYSIS_AVAILABLE else ["basic"],
+        "max_years_analysis": 10,
+        "max_files_per_analysis": 5,
+        "features": {
+            "real_company_data": bool(os.environ.get('CH_API_KEY')),
+            "ai_analysis": bool(os.environ.get('OPENAI_API_KEY') or os.environ.get('ANTHROPIC_API_KEY')),
+            "advanced_pdf_processing": ANALYSIS_AVAILABLE,
+            "archetype_classification": ANALYSIS_AVAILABLE
+        }
+    })
+
 # Diagnostics endpoint
 @app.route('/diagnostics')
 def diagnostics():
@@ -213,7 +260,11 @@ def diagnostics():
             },
             "environment": dict(os.environ),
             "tessdata_check": {},
-            "installed_packages": []
+            "installed_packages": [],
+            "analysis_modules": {
+                "available": ANALYSIS_AVAILABLE,
+                "import_errors": [] if ANALYSIS_AVAILABLE else ["See logs for import details"]
+            }
         }
         
         # Check for tessdata files
@@ -245,21 +296,19 @@ def diagnostics():
             "timestamp": datetime.now().isoformat()
         }), 500
 
-# Handle OPTIONS requests for analyze endpoint - Remove this since we have global handler
-# @app.route('/api/analyze', methods=['OPTIONS'])
-# def analyze_options():
-#     """Handle preflight OPTIONS requests for analyze endpoint"""
-#     response = make_response()
-#     response.headers.add("Access-Control-Allow-Origin", "*")
-#     response.headers.add('Access-Control-Allow-Headers', "Content-Type,Authorization,Accept,X-Requested-With")
-#     response.headers.add('Access-Control-Allow-Methods', "POST,OPTIONS")
-#     return response
-
-# Main analysis endpoint - simplified
+# Main analysis endpoint - REAL INTEGRATION
 @app.route('/api/analyze', methods=['POST'])
 def analyze():
-    """Main company analysis endpoint"""
+    """Main company analysis endpoint with real archetype analysis"""
     try:
+        # Check if analysis modules are available
+        if not ANALYSIS_AVAILABLE:
+            return jsonify({
+                "success": False,
+                "error": "Analysis modules not available. Please ensure all analysis files are copied to the Flask project.",
+                "missing_modules": "companies_house_client, content_processor, pdf_extractor, ai_analyzer, config"
+            }), 500
+        
         # Get request data
         data = request.get_json()
         
@@ -284,43 +333,224 @@ def analyze():
                 "error": "At least one year must be specified"
             }), 400
         
-        # Validate company number format (UK companies are 8 digits)
+        # Validate company number format
         if not company_number.isdigit() or len(company_number) != 8:
             return jsonify({
                 "success": False,
                 "error": "Invalid UK company number format. Must be 8 digits."
             }), 400
         
-        logger.info(f"Starting analysis for company {company_number}, years {years}")
+        logger.info(f"Starting real archetype analysis for company {company_number}, years {years}")
         
-        # Mock analysis for now - replace with your actual logic
-        # This is where you would integrate with Companies House API,
-        # download documents, process PDFs, run OCR, and perform archetype analysis
+        # Check if we have Companies House API key
+        companies_house_api_key = os.environ.get('CH_API_KEY')
+        if not companies_house_api_key:
+            return jsonify({
+                "success": False,
+                "error": "Companies House API key not configured. Please set CH_API_KEY environment variable."
+            }), 500
         
-        mock_result = {
-            "success": True,
-            "company_number": company_number,
-            "company_name": f"Example Company Ltd (#{company_number})",
-            "years_analyzed": years,
-            "files_processed": len(years) * 3,  # Mock: 3 files per year
-            "analysis_date": datetime.now().isoformat(),
-            "business_strategy": {
-                "dominant": "Growth-Oriented",
-                "reasoning": "Based on analysis of annual reports and strategic statements, the company demonstrates a consistent focus on market expansion and revenue growth."
-            },
-            "risk_strategy": {
-                "dominant": "Balanced Risk",
-                "reasoning": "The company maintains a moderate approach to risk management, balancing growth opportunities with prudent financial controls."
-            },
-            "confidence_score": 0.85,
-            "data_sources": [
-                "Annual Reports",
-                "Strategic Reports", 
-                "Directors' Reports"
-            ]
-        }
+        # Initialize your existing classes
+        try:
+            ch_client = CompaniesHouseClient()
+            content_processor = ContentProcessor()
+            pdf_extractor = PDFExtractor()
+            archetype_analyzer = AIArchetypeAnalyzer()
+        except Exception as e:
+            logger.error(f"Failed to initialize analysis components: {e}")
+            return jsonify({
+                "success": False,
+                "error": f"Failed to initialize analysis components: {str(e)}"
+            }), 500
         
-        return jsonify(mock_result)
+        # Validate company exists
+        exists, company_name = ch_client.validate_company_exists(company_number)
+        if not exists:
+            return jsonify({
+                "success": False,
+                "error": f"Company {company_number} not found in Companies House records."
+            }), 404
+        
+        # Calculate max_years to capture selected years
+        current_year = datetime.now().year
+        oldest_year = min(years)
+        max_years_needed = current_year - oldest_year + 2
+        
+        # Download company filings
+        logger.info(f"Downloading filings for last {max_years_needed} years...")
+        download_results = ch_client.download_annual_accounts(company_number, max_years_needed)
+        
+        if not download_results or download_results['total_downloaded'] == 0:
+            return jsonify({
+                "success": False,
+                "error": f"No annual accounts found for company {company_number}. This could mean the company hasn't filed accounts recently or they are not available for download."
+            }), 404
+        
+        # Filter to selected years
+        filtered_files = []
+        for file_info in download_results['downloaded_files']:
+            file_date = file_info.get('date')
+            if file_date:
+                try:
+                    if isinstance(file_date, str):
+                        file_year = datetime.strptime(str(file_date), '%Y-%m-%d').year
+                    else:
+                        file_year = file_date.year
+                    
+                    if file_year in years:
+                        filtered_files.append(file_info)
+                        logger.info(f"Including {file_info['filename']} (Year {file_year})")
+                except Exception as e:
+                    logger.warning(f"Could not parse date for {file_info['filename']}: {e}")
+                    continue
+        
+        if not filtered_files:
+            return jsonify({
+                "success": False,
+                "error": f"No documents found for selected years {years}. Available years might be different."
+            }), 404
+        
+        logger.info(f"Found {len(filtered_files)} documents in selected years")
+        
+        # Extract content from PDFs
+        extracted_content = []
+        for file_info in filtered_files[:5]:  # Limit to 5 files for performance
+            try:
+                logger.info(f"Processing {file_info['filename']}")
+                
+                # Read PDF file
+                with open(file_info['path'], 'rb') as f:
+                    pdf_content = f.read()
+                
+                # Extract text using your PDFExtractor
+                extraction_result = pdf_extractor.extract_text_from_pdf(
+                    pdf_content, 
+                    file_info['filename']
+                )
+                
+                if extraction_result["extraction_status"] == "success":
+                    content = extraction_result.get("raw_text", "")
+                    
+                    if content and len(content.strip()) > 100:
+                        extracted_content.append({
+                            'filename': file_info['filename'],
+                            'date': file_info['date'],
+                            'content': content,
+                            'metadata': {
+                                'transaction_id': file_info.get('transaction_id', ''),
+                                'description': file_info.get('description', ''),
+                                'file_size': file_info['size'],
+                                'extraction_method': extraction_result["extraction_method"]
+                            }
+                        })
+                        logger.info(f"Successfully extracted {len(content)} characters from {file_info['filename']}")
+                    else:
+                        logger.warning(f"Insufficient content extracted from {file_info['filename']}")
+                else:
+                    logger.warning(f"Failed to extract content from {file_info['filename']}: {extraction_result.get('error', 'Unknown error')}")
+                
+            except Exception as e:
+                logger.error(f"Error processing {file_info['filename']}: {e}")
+                continue
+        
+        if not extracted_content:
+            return jsonify({
+                "success": False,
+                "error": "Could not extract readable content from any documents. This might indicate the PDFs are image-based or protected."
+            }), 500
+        
+        logger.info(f"Successfully extracted content from {len(extracted_content)} documents")
+        
+        # Process content using your ContentProcessor
+        processed_documents = []
+        for content_data in extracted_content:
+            try:
+                processed = content_processor.process_document_content(
+                    content_data['content'],
+                    content_data['metadata']
+                )
+                processed_documents.append(processed)
+            except Exception as e:
+                logger.error(f"Error processing content from {content_data['filename']}: {e}")
+                continue
+        
+        # Combine all documents
+        combined_analysis = content_processor.combine_multiple_documents(processed_documents)
+        
+        # Perform archetype analysis using your AIArchetypeAnalyzer
+        combined_content = "\n\n".join([content_data['content'] for content_data in extracted_content])
+        
+        logger.info("Starting archetype classification analysis...")
+        archetype_analysis = archetype_analyzer.analyze_archetypes(
+            combined_content,
+            company_name,
+            company_number
+        )
+        
+        # Clean up temporary files
+        try:
+            ch_client.cleanup_temp_files()
+        except Exception as e:
+            logger.warning(f"Could not clean up temp files: {e}")
+        
+        # Build response in the format your HTML expects
+        if archetype_analysis.get('success', False):
+            business_archetypes = archetype_analysis.get('business_strategy_archetypes', {})
+            risk_archetypes = archetype_analysis.get('risk_strategy_archetypes', {})
+            
+            result = {
+                "success": True,
+                "company_number": company_number,
+                "company_name": company_name,
+                "years_analyzed": years,
+                "files_processed": len(extracted_content),
+                "documents_found": len(filtered_files),
+                "analysis_date": datetime.now().isoformat(),
+                "business_strategy": {
+                    "dominant": business_archetypes.get('dominant', 'Unknown'),
+                    "reasoning": business_archetypes.get('reasoning', 'Analysis completed but detailed reasoning not available'),
+                    "secondary": business_archetypes.get('secondary')
+                },
+                "risk_strategy": {
+                    "dominant": risk_archetypes.get('dominant', 'Unknown'), 
+                    "reasoning": risk_archetypes.get('reasoning', 'Analysis completed but detailed reasoning not available'),
+                    "secondary": risk_archetypes.get('secondary')
+                },
+                "confidence_score": min(len(extracted_content) / 3.0, 1.0),
+                "analysis_method": archetype_analysis.get('analysis_type', 'pattern_based'),
+                "data_sources": [content['filename'] for content in extracted_content],
+                "word_count": combined_analysis.get('content_stats', {}).get('total_word_count', 0),
+                "content_categories": {
+                    category: len(sections) 
+                    for category, sections in combined_analysis.get('categorized_content', {}).items()
+                }
+            }
+            
+            logger.info(f"Analysis completed successfully for {company_name}")
+            logger.info(f"Business Strategy: {result['business_strategy']['dominant']}")
+            logger.info(f"Risk Strategy: {result['risk_strategy']['dominant']}")
+            logger.info(f"Analysis method: {result['analysis_method']}")
+            
+            return jsonify(result)
+        else:
+            # Analysis failed but return what we can
+            error_msg = archetype_analysis.get('error', 'Archetype analysis failed')
+            logger.error(f"Archetype analysis failed: {error_msg}")
+            
+            return jsonify({
+                "success": False,
+                "error": f"Archetype analysis failed: {error_msg}",
+                "company_name": company_name,
+                "files_processed": len(extracted_content),
+                "partial_data": {
+                    "word_count": combined_analysis.get('content_stats', {}).get('total_word_count', 0),
+                    "documents_processed": len(extracted_content),
+                    "content_categories": {
+                        category: len(sections) 
+                        for category, sections in combined_analysis.get('categorized_content', {}).items()
+                    }
+                }
+            }), 500
         
     except Exception as e:
         logger.error(f"Analysis error: {str(e)}")
@@ -403,6 +633,7 @@ def not_found(e):
             "/test-ocr", 
             "/test-pdf",
             "/diagnostics",
+            "/api/config",
             "/api/analyze",
             "/upload"
         ]
@@ -422,6 +653,7 @@ if __name__ == '__main__':
     
     logger.info(f"Starting Flask app on port {port}")
     logger.info(f"Debug mode: {debug}")
+    logger.info(f"Analysis modules available: {ANALYSIS_AVAILABLE}")
     
     app.run(
         host='0.0.0.0',
