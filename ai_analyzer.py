@@ -1,36 +1,27 @@
-
-from flask import Flask
-import os
-import openai
-
-app = Flask(__name__)
-
-# --- OpenAI API Health Check Route ---
-
-
 #!/usr/bin/env python3
 """
-AI Analyzer - Complete Debug Version
+AI Analyzer - OpenAI Only Version
 """
 
 import logging
 import json
 import os
 import re
+import traceback
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
 from config import (
-    DEFAULT_OPENAI_MODEL, DEFAULT_ANTHROPIC_MODEL, AI_MAX_TOKENS, AI_TEMPERATURE
+    DEFAULT_OPENAI_MODEL, AI_MAX_TOKENS, AI_TEMPERATURE
 )
 
 logger = logging.getLogger(__name__)
 
 class AIArchetypeAnalyzer:
-    """AI-powered analyzer with extensive debugging"""
+    """AI-powered analyzer with OpenAI integration"""
     
     def __init__(self):
-        """Initialize the AI analyzer with detailed debugging"""
+        """Initialize the AI analyzer with OpenAI only"""
         self.client = None
         self.client_type = "fallback"
         self._setup_client()
@@ -74,48 +65,69 @@ class AIArchetypeAnalyzer:
         }
 
     def _setup_client(self):
-        """Setup the AI client with correct OpenAI 1.35.0 syntax"""
+        """Setup the OpenAI client with better error handling and debugging"""
         logger.info("🔧 AI CLIENT SETUP - Starting initialization...")
         
         try:
-            # Check for OpenAI API key first
+            # Check for OpenAI API key
             openai_key = os.getenv('OPENAI_API_KEY')
             logger.info(f"🔑 OpenAI API key check - Found: {bool(openai_key)}")
             
             if openai_key:
                 logger.info(f"🔑 OpenAI key length: {len(openai_key)} characters")
-                logger.info(f"🔑 OpenAI key prefix: {openai_key[:15]}...")
-                logger.info(f"🔑 OpenAI key suffix: ...{openai_key[-8:]}")
-                
+                # Check if it's a placeholder
                 if openai_key.startswith('your_'):
                     logger.warning("🚨 DETECTED: OpenAI API key is placeholder value!")
+                    openai_key = None  # Treat as if not set
+                elif openai_key.startswith('sk-'):
+                    logger.info("✅ OpenAI key format looks correct (starts with sk-)")
+                else:
+                    logger.warning("⚠️ OpenAI key format may be incorrect (doesn't start with sk-)")
                     
-            if openai_key and openai_key.strip() and not openai_key.startswith('your_'):
+            if openai_key and openai_key.strip():
                 try:
                     logger.info("📦 ATTEMPTING: Import OpenAI library...")
                     import openai
                     logger.info(f"✅ SUCCESS: OpenAI library imported, version: {getattr(openai, '__version__', 'unknown')}")
                     
                     logger.info("🚀 ATTEMPTING: Initialize OpenAI client...")
-                    # FIXED: Use correct OpenAI 1.35.0 syntax - no proxies parameter
+                    
+                    # Create client with proper error handling
                     self.client = openai.OpenAI(
-                        api_key=openai_key,
-                        timeout=30.0,  # Add timeout instead of proxies
-                        max_retries=2   # Add retries instead of proxies
+                        api_key=openai_key.strip(),  # Strip whitespace
+                        timeout=30.0,
+                        max_retries=2
                     )
                     self.client_type = "openai"
                     logger.info("✅ SUCCESS: OpenAI client initialized")
                     
-                    # Test API connection with a simple call
+                    # Test API connection with a minimal call
                     try:
                         logger.info("🧪 TESTING: OpenAI API connection...")
-                        models_response = self.client.models.list()
-                        model_count = len(models_response.data) if hasattr(models_response, 'data') else 0
-                        logger.info(f"✅ SUCCESS: OpenAI API test passed, {model_count} models available")
-                        return
+                        test_response = self.client.chat.completions.create(
+                            model="gpt-3.5-turbo",  # Use reliable model
+                            messages=[{"role": "user", "content": "Hi"}],
+                            max_tokens=1,  # Minimal tokens
+                            temperature=0
+                        )
+                        logger.info("✅ SUCCESS: OpenAI API test passed")
+                        return  # Success! Exit here
+                        
                     except Exception as api_test_error:
                         logger.error(f"🚨 FAILED: OpenAI API test - {type(api_test_error).__name__}: {str(api_test_error)}")
-                        # Continue to try other methods
+                        
+                        # Check specific error types
+                        error_str = str(api_test_error).lower()
+                        if "api key" in error_str or "authentication" in error_str:
+                            logger.error("💡 HINT: API key authentication failed - check if key is valid")
+                        elif "quota" in error_str or "billing" in error_str:
+                            logger.error("💡 HINT: Quota/billing issue - check OpenAI account status")
+                        elif "rate limit" in error_str:
+                            logger.error("💡 HINT: Rate limited - will continue with fallback")
+                        else:
+                            logger.error(f"💡 HINT: Unexpected API error: {str(api_test_error)}")
+                        
+                        # Fall through to fallback
                         
                 except ImportError as import_error:
                     logger.error(f"🚨 FAILED: OpenAI import - {str(import_error)}")
@@ -124,37 +136,18 @@ class AIArchetypeAnalyzer:
             else:
                 if not openai_key:
                     logger.warning("⚠️ OpenAI API key not found in environment")
-                elif openai_key.startswith('your_'):
-                    logger.warning("⚠️ OpenAI API key is placeholder")
                 else:
                     logger.warning("⚠️ OpenAI API key is empty or invalid")
-            
-            # Try Anthropic as fallback
-            anthropic_key = os.getenv('ANTHROPIC_API_KEY')
-            logger.info(f"🔑 Anthropic API key check - Found: {bool(anthropic_key and anthropic_key.strip())}")
-            
-            if anthropic_key and anthropic_key.strip() and not anthropic_key.startswith('your_'):
-                try:
-                    logger.info("📦 ATTEMPTING: Import Anthropic library...")
-                    import anthropic
-                    logger.info("✅ SUCCESS: Anthropic library imported")
-                    
-                    logger.info("🚀 ATTEMPTING: Initialize Anthropic client...")
-                    self.client = anthropic.Anthropic(api_key=anthropic_key)
-                    self.client_type = "anthropic"
-                    logger.info("✅ SUCCESS: Anthropic client initialized")
-                    return
-                except ImportError as import_error:
-                    logger.error(f"🚨 FAILED: Anthropic import - {str(import_error)}")
-                except Exception as setup_error:
-                    logger.error(f"🚨 FAILED: Anthropic setup - {type(setup_error).__name__}: {str(setup_error)}")
-            
-            logger.warning("⚠️ FALLBACK: No valid AI clients available, using pattern analysis")
+        
+            # If we get here, OpenAI failed
+            logger.warning("⚠️ FALLBACK: No valid OpenAI client available, using pattern analysis")
+            logger.info("💡 HINT: Check your OpenAI API key and network connectivity")
             self.client = None
             self.client_type = "fallback"
             
         except Exception as critical_error:
             logger.error(f"🚨 CRITICAL: Error in AI setup - {type(critical_error).__name__}: {str(critical_error)}")
+            logger.error(f"🚨 CRITICAL: Error traceback: {traceback.format_exc()}")
             self.client = None
             self.client_type = "fallback"
 
@@ -166,8 +159,8 @@ class AIArchetypeAnalyzer:
             logger.info(f"📊 Content length: {len(content):,} characters")
             logger.info(f"🤖 Client object: {type(self.client).__name__ if self.client else 'None'}")
             
-            if self.client and self.client_type in ["openai", "anthropic"]:
-                logger.info(f"🚀 ATTEMPTING: AI-powered analysis using {self.client_type}")
+            if self.client and self.client_type == "openai":
+                logger.info(f"🚀 ATTEMPTING: AI-powered analysis using OpenAI")
                 
                 try:
                     # Test business strategy analysis
@@ -190,7 +183,7 @@ class AIArchetypeAnalyzer:
                         company_number=company_number,
                         business_strategy_archetypes=business_analysis,
                         risk_strategy_archetypes=risk_analysis,
-                        model_used=f"{self.client_type}_{DEFAULT_OPENAI_MODEL if self.client_type == 'openai' else DEFAULT_ANTHROPIC_MODEL}"
+                        model_used=f"openai_{DEFAULT_OPENAI_MODEL}"
                     )
                     
                 except Exception as ai_error:
@@ -207,9 +200,9 @@ class AIArchetypeAnalyzer:
             return self._create_error_result(str(e))
 
     def _classify_dominant_and_secondary_archetypes(self, content: str, archetype_dict: Dict[str, str], label: str) -> Dict[str, Any]:
-        """Classify archetypes with detailed API logging"""
+        """Classify archetypes using OpenAI API"""
         
-        logger.info(f"🎯 CLASSIFYING: {label} using {self.client_type} API")
+        logger.info(f"🎯 CLASSIFYING: {label} using OpenAI API")
         
         # Prepare content (truncate for API limits)
         content_sample = content[:8000]
@@ -238,38 +231,22 @@ TEXT TO ANALYSE:
 {content_sample}"""
 
         try:
-            if self.client_type == "openai":
-                logger.info(f"🚀 MAKING OpenAI API call for {label}...")
-                logger.info(f"📝 Prompt length: {len(prompt)} characters")
-                
-                response = self.client.chat.completions.create(
-                    model=DEFAULT_OPENAI_MODEL,
-                    messages=[
-                        {"role": "system", "content": f"You are an expert {label.lower()} analyst for UK financial services firms."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=1000,
-                    temperature=AI_TEMPERATURE
-                )
-                
-                response_text = response.choices[0].message.content
-                logger.info(f"✅ OpenAI response received: {len(response_text)} characters")
-                logger.info(f"📄 OpenAI response preview: {response_text[:200]}...")
-                
-            elif self.client_type == "anthropic":
-                logger.info(f"🚀 MAKING Anthropic API call for {label}...")
-                
-                response = self.client.messages.create(
-                    model=DEFAULT_ANTHROPIC_MODEL,
-                    max_tokens=1000,
-                    temperature=AI_TEMPERATURE,
-                    system=f"You are an expert {label.lower()} analyst for UK financial services firms.",
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                
-                response_text = response.content[0].text
-                logger.info(f"✅ Anthropic response received: {len(response_text)} characters")
-                logger.info(f"📄 Anthropic response preview: {response_text[:200]}...")
+            logger.info(f"🚀 MAKING OpenAI API call for {label}...")
+            logger.info(f"📝 Prompt length: {len(prompt)} characters")
+            
+            response = self.client.chat.completions.create(
+                model=DEFAULT_OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": f"You are an expert {label.lower()} analyst for UK financial services firms."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=1000,
+                temperature=AI_TEMPERATURE
+            )
+            
+            response_text = response.choices[0].message.content
+            logger.info(f"✅ OpenAI response received: {len(response_text)} characters")
+            logger.info(f"📄 OpenAI response preview: {response_text[:200]}...")
             
             # Parse the response
             result = self._parse_archetype_response(response_text)
