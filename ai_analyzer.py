@@ -307,12 +307,18 @@ TEXT TO ANALYSE:
             line = line.strip()
             # Handle both regular and bold markdown formatting
             if line.startswith("Dominant:") or line.startswith("**Dominant:**"):
-                result["dominant"] = line.replace("Dominant:", "").replace("**Dominant:**", "").strip()
+                value = line.replace("Dominant:", "").replace("**Dominant:**", "").strip()
+                # Clean any remaining asterisks and extra whitespace
+                result["dominant"] = re.sub(r'\*+', '', value).strip()
             elif line.startswith("Secondary:") or line.startswith("**Secondary:**"):
-                secondary = line.replace("Secondary:", "").replace("**Secondary:**", "").strip()
-                result["secondary"] = secondary if secondary.lower() != "none" else ""
+                value = line.replace("Secondary:", "").replace("**Secondary:**", "").strip()
+                # Clean any remaining asterisks and extra whitespace
+                value = re.sub(r'\*+', '', value).strip()
+                result["secondary"] = value if value.lower() != "none" else ""
             elif line.startswith("Reasoning:") or line.startswith("**Reasoning:**"):
-                result["reasoning"] = line.replace("Reasoning:", "").replace("**Reasoning:**", "").strip()
+                value = line.replace("Reasoning:", "").replace("**Reasoning:**", "").strip()
+                # Clean any remaining asterisks and extra whitespace
+                result["reasoning"] = re.sub(r'\*+', '', value).strip()
         
         return result
 
