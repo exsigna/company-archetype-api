@@ -1,4 +1,4 @@
-# OpenAI health check verified on Wed  2 Jul 2025 17:57:05 BST
+# OpenAI-focused Flask app for Company Archetype Analysis
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS, cross_origin
 import os
@@ -32,45 +32,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-
-# --- OpenAI API Health Check Route ---
-@app.route("/check-openai")
-def check_openai():
-    import openai
-    try:
-        openai_key = os.getenv("OPENAI_API_KEY")
-        if not openai_key or openai_key.startswith("your_"):
-            return "❌ API key missing or placeholder"
-        client = openai.OpenAI(api_key=openai_key)
-        models = client.models.list()
-        model_count = len(models.data) if hasattr(models, 'data') else 0
-        return f"✅ OpenAI API key is working. {model_count} models available."
-    except Exception as e:
-        return f"❌ OpenAI API test failed: {type(e).__name__}: {e}"
-# --- End of Health Check ---
-
-
-# --- OpenAI API Health Check Route ---
-
-        client = openai.OpenAI(api_key=openai_key)
-        models = client.models.list()
-        model_count = len(models.data) if hasattr(models, 'data') else 0
-        return f"✅ OpenAI API key is working. {model_count} models available."
-    except Exception as e:
-        return f"❌ OpenAI API test failed: {type(e).__name__}: {e}"
-# --- End of Health Check ---
-
-
-# --- OpenAI API Health Check Route ---
-
-        client = openai.OpenAI(api_key=openai_key)
-        models = client.models.list()
-        model_count = len(models.data) if hasattr(models, 'data') else 0
-        return f"✅ OpenAI API key is working. {model_count} models available."
-    except Exception as e:
-        return f"❌ OpenAI API test failed: {type(e).__name__}: {e}"
-# --- End of Health Check ---
-
 
 # Configure CORS properly for browser requests
 CORS(app, 
@@ -107,6 +68,161 @@ def handle_preflight():
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
 
+# --- OpenAI API Health Check Route ---
+@app.route("/check-openai")
+def check_openai():
+    """Test OpenAI API connectivity"""
+    try:
+        import openai
+        openai_key = os.getenv("OPENAI_API_KEY")
+        
+        if not openai_key or openai_key.startswith("your_"):
+            return jsonify({
+                "status": "error",
+                "message": "❌ API key missing or placeholder",
+                "configured": False
+            })
+            
+        client = openai.OpenAI(api_key=openai_key)
+        
+        # Test with a simple completion
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": "Hello"}],
+            max_tokens=5
+        )
+        
+        return jsonify({
+            "status": "success",
+            "message": "✅ OpenAI API key is working",
+            "configured": True,
+            "model_tested": "gpt-3.5-turbo",
+            "response_received": bool(response.choices)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error", 
+            "message": f"❌ OpenAI API test failed: {type(e).__name__}: {e}",
+            "configured": False
+        })
+
+# --- Debug Routes for Environment Variables ---
+@app.route('/debug-env')
+def debug_env():
+    """Debug environment variables and AI client setup"""
+    try:
+        import openai
+        
+        # Get environment info
+        openai_key = os.getenv('OPENAI_API_KEY')
+        
+        debug_info = {
+            "environment_variables": {
+                "OPENAI_API_KEY_SET": bool(openai_key),
+                "OPENAI_API_KEY_LENGTH": len(openai_key) if openai_key else 0,
+                "OPENAI_API_KEY_PREFIX": openai_key[:15] + "..." if openai_key and len(openai_key) > 15 else "Not set",
+                "OPENAI_API_KEY_IS_PLACEHOLDER": openai_key.startswith('your_') if openai_key else False,
+                "OPENAI_API_KEY_FORMAT_OK": openai_key.startswith('sk-') if openai_key else False,
+            },
+            "openai_library": {
+                "available": True,
+                "version": getattr(openai, '__version__', 'unknown')
+            },
+            "client_test": {}
+        }
+        
+        # Test OpenAI client creation
+        if openai_key and not openai_key.startswith('your_'):
+            try:
+                client = openai.OpenAI(
+                    api_key=openai_key,
+                    timeout=30.0,
+                    max_retries=2
+                )
+                debug_info["client_test"]["openai_client_created"] = True
+                
+                # Test simple API call
+                try:
+                    test_response = client.chat.completions.create(
+                        model="gpt-3.5-turbo",
+                        messages=[{"role": "user", "content": "Hello"}],
+                        max_tokens=5
+                    )
+                    debug_info["client_test"]["openai_api_working"] = True
+                    debug_info["client_test"]["test_response"] = test_response.choices[0].message.content if test_response.choices else "No response"
+                except Exception as api_error:
+                    debug_info["client_test"]["openai_api_working"] = False
+                    debug_info["client_test"]["api_error"] = f"{type(api_error).__name__}: {str(api_error)}"
+                    
+            except Exception as client_error:
+                debug_info["client_test"]["openai_client_created"] = False
+                debug_info["client_test"]["client_error"] = f"{type(client_error).__name__}: {str(client_error)}"
+        else:
+            debug_info["client_test"]["openai_api_key_issue"] = "API key missing or placeholder"
+        
+        # Test if AI analyzer can initialize
+        if ANALYSIS_AVAILABLE:
+            try:
+                analyzer = AIArchetypeAnalyzer()
+                debug_info["analyzer"] = {
+                    "available": True,
+                    "client_type": analyzer.client_type,
+                    "client_object": str(type(analyzer.client)) if analyzer.client else "None"
+                }
+            except Exception as analyzer_error:
+                debug_info["analyzer"] = {
+                    "available": False,
+                    "error": f"{type(analyzer_error).__name__}: {str(analyzer_error)}"
+                }
+        else:
+            debug_info["analyzer"] = {"available": False, "reason": "Analysis modules not imported"}
+        
+        return jsonify(debug_info)
+        
+    except ImportError as e:
+        return jsonify({
+            "error": "OpenAI library not available",
+            "details": str(e),
+            "openai_available": False
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Debug failed",
+            "details": str(e),
+            "traceback": traceback.format_exc()
+        })
+
+@app.route('/simple-env-check')
+def simple_env_check():
+    """Simple environment variable check"""
+    openai_key = os.getenv('OPENAI_API_KEY', 'NOT_SET')
+    
+    return jsonify({
+        "openai_key_exists": bool(openai_key and openai_key != 'NOT_SET'),
+        "openai_key_length": len(openai_key) if openai_key != 'NOT_SET' else 0,
+        "openai_key_format": "valid" if openai_key.startswith('sk-') else "invalid" if openai_key != 'NOT_SET' else "not_set",
+        "render_env": {
+            "port": os.getenv('PORT'),
+            "python_version": os.getenv('PYTHON_VERSION'),
+            "render": os.getenv('RENDER'),
+        },
+        "all_env_vars_count": len(os.environ),
+        "key_preview": openai_key[:20] + "..." if openai_key != 'NOT_SET' and len(openai_key) > 20 else openai_key
+    })
+
+@app.route('/quick-openai-test')
+def quick_openai_test():
+    """Quick OpenAI API key test"""
+    key = os.getenv('OPENAI_API_KEY')
+    return jsonify({
+        "key_exists": bool(key),
+        "key_length": len(key) if key else 0,
+        "key_starts_with_sk": key.startswith('sk-') if key else False,
+        "key_preview": key[:20] + "..." if key and len(key) > 20 else key,
+        "is_placeholder": key.startswith('your_') if key else False
+    })
+
 # Root endpoint with API information
 @app.route('/')
 def root():
@@ -118,6 +234,10 @@ def root():
         "analysis_available": ANALYSIS_AVAILABLE,
         "endpoints": {
             "health": "/health (GET)",
+            "openai_check": "/check-openai (GET)",
+            "debug": "/debug-env (GET)",
+            "simple_check": "/simple-env-check (GET)",
+            "quick_test": "/quick-openai-test (GET)",
             "test-ocr": "/test-ocr (GET)",
             "test-pdf": "/test-pdf (GET)",
             "diagnostics": "/diagnostics (GET)",
@@ -132,7 +252,7 @@ def root():
         "features": {
             "real_analysis": ANALYSIS_AVAILABLE,
             "companies_house_integration": bool(os.environ.get('CH_API_KEY')),
-            "ai_analysis": bool(os.environ.get('OPENAI_API_KEY') or os.environ.get('ANTHROPIC_API_KEY'))
+            "ai_analysis": bool(os.environ.get('OPENAI_API_KEY'))
         },
         "timestamp": datetime.now().isoformat()
     })
@@ -275,24 +395,23 @@ def api_config():
     return jsonify({
         "companies_house_configured": bool(os.environ.get('CH_API_KEY')),
         "openai_configured": bool(os.environ.get('OPENAI_API_KEY')),
-        "anthropic_configured": bool(os.environ.get('ANTHROPIC_API_KEY')),
         "analysis_modules_available": ANALYSIS_AVAILABLE,
         "analysis_methods_available": [
             "pattern_based",
-            "ai_powered" if (os.environ.get('OPENAI_API_KEY') or os.environ.get('ANTHROPIC_API_KEY')) else None
+            "ai_powered" if os.environ.get('OPENAI_API_KEY') else None
         ],
         "pdf_extraction_methods": ["pypdf2", "pdfplumber", "ocr"] if ANALYSIS_AVAILABLE else ["basic"],
         "max_years_analysis": 10,
         "max_files_per_analysis": 5,
         "features": {
             "real_company_data": bool(os.environ.get('CH_API_KEY')),
-            "ai_analysis": bool(os.environ.get('OPENAI_API_KEY') or os.environ.get('ANTHROPIC_API_KEY')),
+            "ai_analysis": bool(os.environ.get('OPENAI_API_KEY')),
             "advanced_pdf_processing": ANALYSIS_AVAILABLE,
             "archetype_classification": ANALYSIS_AVAILABLE
         }
     })
 
-# ===== NEW ENDPOINTS TO MATCH FRONTEND EXPECTATIONS =====
+# ===== ENDPOINTS TO MATCH FRONTEND EXPECTATIONS =====
 
 @app.route('/api/years/<company_number>')
 @app.route('/api/company/<company_number>/years')
@@ -341,7 +460,6 @@ def get_company_years(company_number):
         logger.error(f"Error getting years for {company_number}: {e}")
         return jsonify({"error": str(e)}), 500
 
-
 @app.route('/api/available-years')
 def get_available_years():
     """Get available years with query parameter"""
@@ -350,7 +468,6 @@ def get_available_years():
         return jsonify({"error": "company parameter required"}), 400
     
     return get_company_years(company_number)
-
 
 @app.route('/api/documents/<company_number>')
 @app.route('/api/filings/<company_number>')  
@@ -421,7 +538,14 @@ def diagnostics():
                 "working_directory": os.getcwd(),
                 "temp_directory": tempfile.gettempdir()
             },
-            "environment": dict(os.environ),
+            "environment": {
+                "OPENAI_API_KEY_SET": bool(os.environ.get('OPENAI_API_KEY')),
+                "CH_API_KEY_SET": bool(os.environ.get('CH_API_KEY')),
+                "PORT": os.environ.get('PORT'),
+                "PYTHON_VERSION": os.environ.get('PYTHON_VERSION'),
+                "RENDER": os.environ.get('RENDER'),
+                "total_env_vars": len(os.environ)
+            },
             "tessdata_check": {},
             "installed_packages": [],
             "analysis_modules": {
@@ -829,6 +953,10 @@ def not_found(e):
         "error": "Endpoint not found",
         "available_endpoints": [
             "/health",
+            "/check-openai",
+            "/debug-env",
+            "/simple-env-check", 
+            "/quick-openai-test",
             "/test-ocr", 
             "/test-pdf",
             "/diagnostics",
@@ -858,6 +986,7 @@ if __name__ == '__main__':
     logger.info(f"Starting Flask app on port {port}")
     logger.info(f"Debug mode: {debug}")
     logger.info(f"Analysis modules available: {ANALYSIS_AVAILABLE}")
+    logger.info(f"OpenAI API key configured: {bool(os.environ.get('OPENAI_API_KEY'))}")
     
     app.run(
         host='0.0.0.0',
