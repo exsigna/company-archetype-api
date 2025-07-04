@@ -1,13 +1,22 @@
 #!/usr/bin/env python3
 """
-PDF content extraction module
+PDF content extraction module with memory management
 Handles text extraction from PDF files using multiple methods
 """
 
 import io
+import gc
 import logging
 from typing import Dict, List, Optional
 from pathlib import Path
+
+# Add these imports for memory management
+try:
+    import psutil
+    import os
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
 
 from config import MAX_PAGES_OCR, OCR_DPI, OCR_CONFIG, MIN_EXTRACTION_LENGTH
 
@@ -16,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class PDFExtractor:
-    """Handles PDF text extraction using multiple methods"""
+    """Handles PDF text extraction using multiple methods with memory management"""
     
     def __init__(self):
         """Initialize PDFExtractor and check available dependencies"""
@@ -58,9 +67,32 @@ class PDFExtractor:
         if not self.available_methods:
             logger.error("No PDF extraction methods available! Please install required dependencies.")
     
+    def log_memory_usage(self, context: str):
+        """Log current memory usage if psutil is available"""
+        if PSUTIL_AVAILABLE:
+            try:
+                process = psutil.Process(os.getpid())
+                memory_mb = process.memory_info().rss / 1024 / 1024
+                logger.info(f"Memory usage {context}: {memory_mb:.1f}MB")
+                
+                # Warning if memory usage is high
+                if memory_mb > 1500:  # 1.5GB warning threshold
+                    logger.warning(f"High memory usage detected: {memory_mb:.1f}MB")
+                    
+                return memory_mb
+            except Exception as e:
+                logger.debug(f"Could not get memory usage: {e}")
+        return None
+    
+    def cleanup_memory(self):
+        """Force garbage collection and log memory cleanup"""
+        self.log_memory_usage("before cleanup")
+        gc.collect()
+        self.log_memory_usage("after cleanup")
+    
     def extract_text_from_pdf(self, pdf_content: bytes, filename: str) -> Dict:
         """
-        Extract text from PDF using the best available method
+        Extract text from PDF using the best available method with memory management
         
         Args:
             pdf_content: PDF file content as bytes
@@ -69,6 +101,8 @@ class PDFExtractor:
         Returns:
             Dict containing extraction results and metadata with standardized format
         """
+        self.log_memory_usage(f"starting extraction for {filename}")
+        
         if not pdf_content:
             return self._create_error_result(filename, "No PDF content provided")
         
@@ -84,24 +118,33 @@ class PDFExtractor:
                 
                 if method == "pdfplumber" and self.pdfplumber:
                     if self._extract_with_pdfplumber(pdf_content, result):
+                        self.cleanup_memory()
                         return result
                 elif method == "pypdf2" and self.PyPDF2:
                     if self._extract_with_pypdf2(pdf_content, result):
+                        self.cleanup_memory()
                         return result
                 elif method == "ocr" and self.pytesseract:
                     if self._extract_with_ocr(pdf_content, result):
+                        self.cleanup_memory()
                         return result
+                        
+                # Clean up after each attempt
+                self.cleanup_memory()
+                
             except Exception as e:
                 logger.error(f"Exception in {method} extraction for {filename}: {e}")
+                self.cleanup_memory()
                 continue
         
         logger.error(f"All extraction methods failed for {filename}")
         return self._create_error_result(filename, "All extraction methods failed")
     
     def _extract_with_pdfplumber(self, pdf_content: bytes, result: Dict) -> bool:
-        """Extract text using pdfplumber"""
+        """Extract text using pdfplumber with memory monitoring"""
         try:
             logger.debug("Attempting pdfplumber extraction...")
+            self.log_memory_usage("before pdfplumber")
             
             with self.pdfplumber.open(io.BytesIO(pdf_content)) as pdf:
                 if not pdf.pages:
@@ -114,9 +157,16 @@ class PDFExtractor:
                 result["debug_info"]["total_pages"] = len(pdf.pages)
                 logger.debug(f"PDF has {len(pdf.pages)} pages")
                 
-                # Process each page
+                # Process each page with memory monitoring
                 for page_num, page in enumerate(pdf.pages):
                     try:
+                        # Check memory before processing each page
+                        if page_num % 10 == 0:  # Check every 10 pages
+                            memory_mb = self.log_memory_usage(f"page {page_num + 1}")
+                            if memory_mb and memory_mb > 1800:  # 1.8GB threshold
+                                logger.warning(f"Memory limit approaching, stopping at page {page_num + 1}")
+                                break
+                        
                         page_header = f"\n{'='*50}\nPAGE {page_num + 1}\n{'='*50}\n"
                         
                         # Extract regular text
@@ -134,6 +184,10 @@ class PDFExtractor:
                                 if table_text:
                                     table_header = f"\n--- TABLE {page_num + 1}.{table_num + 1} ---\n"
                                     full_text += table_header + table_text + "\n"
+                        
+                        # Clean up variables for this page
+                        del page_text, tables
+                        
                     except Exception as e:
                         logger.debug(f"Error processing page {page_num + 1}: {e}")
                         continue
@@ -158,11 +212,15 @@ class PDFExtractor:
         except Exception as e:
             logger.debug(f"pdfplumber extraction failed: {e}")
             return False
+        finally:
+            # Always clean up
+            gc.collect()
     
     def _extract_with_pypdf2(self, pdf_content: bytes, result: Dict) -> bool:
-        """Extract text using PyPDF2"""
+        """Extract text using PyPDF2 with memory monitoring"""
         try:
             logger.debug("Attempting PyPDF2 extraction...")
+            self.log_memory_usage("before PyPDF2")
             
             pdf_reader = self.PyPDF2.PdfReader(io.BytesIO(pdf_content))
             
@@ -177,6 +235,13 @@ class PDFExtractor:
             
             for page_num, page in enumerate(pdf_reader.pages):
                 try:
+                    # Check memory periodically
+                    if page_num % 20 == 0:
+                        memory_mb = self.log_memory_usage(f"PyPDF2 page {page_num + 1}")
+                        if memory_mb and memory_mb > 1800:
+                            logger.warning(f"Memory limit approaching, stopping at page {page_num + 1}")
+                            break
+                    
                     page_header = f"\n{'='*50}\nPAGE {page_num + 1}\n{'='*50}\n"
                     page_text = page.extract_text()
                     if page_text:
@@ -203,11 +268,14 @@ class PDFExtractor:
         except Exception as e:
             logger.debug(f"PyPDF2 extraction failed: {e}")
             return False
+        finally:
+            gc.collect()
     
     def _extract_with_ocr(self, pdf_content: bytes, result: Dict) -> bool:
-        """Extract text using OCR"""
+        """Extract text using OCR with memory monitoring"""
         try:
             logger.debug("Attempting OCR extraction...")
+            self.log_memory_usage("before OCR")
             result["debug_info"]["ocr_attempted"] = True
             
             # Convert PDF to images
@@ -222,9 +290,17 @@ class PDFExtractor:
                 logger.debug("No images could be generated from PDF")
                 return False
             
+            self.log_memory_usage("after PDF to images conversion")
+            
             full_text = ""
             for page_num, image in enumerate(images):
                 try:
+                    # Check memory before each OCR operation
+                    memory_mb = self.log_memory_usage(f"OCR page {page_num + 1}")
+                    if memory_mb and memory_mb > 1700:  # Lower threshold for OCR
+                        logger.warning(f"Memory limit approaching during OCR, stopping at page {page_num + 1}")
+                        break
+                    
                     page_header = f"\n{'='*50}\nPAGE {page_num + 1} (OCR)\n{'='*50}\n"
                     page_text = self.pytesseract.image_to_string(
                         image, 
@@ -234,9 +310,21 @@ class PDFExtractor:
                     if page_text and page_text.strip():
                         cleaned_text = page_text.replace('\n\n\n', '\n\n').replace('\t', ' ')
                         full_text += page_header + cleaned_text + "\n"
+                    
+                    # Clean up the image from memory
+                    del image
+                    
+                    # Force cleanup every few pages during OCR
+                    if page_num % 3 == 0:
+                        gc.collect()
+                        
                 except Exception as e:
                     logger.debug(f"OCR error on page {page_num + 1}: {e}")
                     continue
+            
+            # Clean up images list
+            del images
+            gc.collect()
             
             result["debug_info"]["text_length"] = len(full_text)
             logger.debug(f"OCR extracted {len(full_text)} characters of text")
@@ -255,7 +343,11 @@ class PDFExtractor:
         except Exception as e:
             logger.debug(f"OCR extraction failed: {e}")
             return False
+        finally:
+            # Always clean up after OCR
+            gc.collect()
     
+    # ... rest of the methods remain the same ...
     def _process_financial_table(self, table) -> str:
         """Convert table data to searchable text format"""
         if not table or not any(table):
