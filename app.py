@@ -108,6 +108,62 @@ def check_openai():
             "configured": False
         })
 
+# --- Minimal OpenAI Test Route ---
+@app.route('/minimal-openai-test')
+def minimal_openai_test():
+    """Absolute minimal OpenAI test"""
+    try:
+        import openai
+        import os
+        
+        # Get API key
+        key = os.getenv('OPENAI_API_KEY')
+        if not key:
+            return jsonify({"error": "No API key found"})
+        
+        # Test 1: Create client with ONLY api_key
+        try:
+            client = openai.OpenAI(api_key=key)
+            client_created = True
+        except Exception as e:
+            return jsonify({
+                "error": "Client creation failed",
+                "details": f"{type(e).__name__}: {e}",
+                "step": "client_creation"
+            })
+        
+        # Test 2: Make API call
+        try:
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": "Hi"}],
+                max_tokens=1
+            )
+            api_working = True
+            api_response = response.choices[0].message.content if response.choices else "No content"
+        except Exception as e:
+            return jsonify({
+                "error": "API call failed",
+                "details": f"{type(e).__name__}: {e}",
+                "step": "api_call",
+                "client_created": True
+            })
+        
+        return jsonify({
+            "success": True,
+            "client_created": client_created,
+            "api_working": api_working,
+            "api_response": api_response,
+            "openai_version": getattr(openai, '__version__', 'unknown')
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "error": "Test failed",
+            "details": f"{type(e).__name__}: {e}",
+            "step": "import_or_setup"
+        })
+
 # --- Debug Routes for Environment Variables ---
 @app.route('/debug-env')
 def debug_env():
@@ -233,6 +289,7 @@ def root():
         "endpoints": {
             "health": "/health (GET)",
             "openai_check": "/check-openai (GET)",
+            "minimal_test": "/minimal-openai-test (GET)",
             "debug": "/debug-env (GET)",
             "simple_check": "/simple-env-check (GET)",
             "quick_test": "/quick-openai-test (GET)",
@@ -952,6 +1009,7 @@ def not_found(e):
         "available_endpoints": [
             "/health",
             "/check-openai",
+            "/minimal-openai-test",
             "/debug-env",
             "/simple-env-check", 
             "/quick-openai-test",
