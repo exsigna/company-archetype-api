@@ -303,22 +303,43 @@ TEXT TO ANALYSE:
         result = {"dominant": "", "secondary": "", "reasoning": ""}
         
         lines = response.strip().split('\n')
-        for line in lines:
+        reasoning_started = False
+        reasoning_lines = []
+        
+        for i, line in enumerate(lines):
             line = line.strip()
+            
             # Handle both regular and bold markdown formatting
             if line.startswith("Dominant:") or line.startswith("**Dominant:**"):
                 value = line.replace("Dominant:", "").replace("**Dominant:**", "").strip()
                 # Clean any remaining asterisks and extra whitespace
                 result["dominant"] = re.sub(r'\*+', '', value).strip()
+                
             elif line.startswith("Secondary:") or line.startswith("**Secondary:**"):
                 value = line.replace("Secondary:", "").replace("**Secondary:**", "").strip()
                 # Clean any remaining asterisks and extra whitespace
                 value = re.sub(r'\*+', '', value).strip()
                 result["secondary"] = value if value.lower() != "none" else ""
+                
             elif line.startswith("Reasoning:") or line.startswith("**Reasoning:**"):
+                # Check if reasoning is on the same line
                 value = line.replace("Reasoning:", "").replace("**Reasoning:**", "").strip()
-                # Clean any remaining asterisks and extra whitespace
-                result["reasoning"] = re.sub(r'\*+', '', value).strip()
+                if value:
+                    # Reasoning is on the same line
+                    result["reasoning"] = re.sub(r'\*+', '', value).strip()
+                else:
+                    # Reasoning starts on the next line
+                    reasoning_started = True
+                    
+            elif reasoning_started:
+                # Collect all remaining lines as reasoning
+                if line:  # Skip empty lines
+                    reasoning_lines.append(line)
+        
+        # If we collected reasoning lines, join them
+        if reasoning_lines:
+            reasoning_text = ' '.join(reasoning_lines)
+            result["reasoning"] = re.sub(r'\*+', '', reasoning_text).strip()
         
         return result
 
