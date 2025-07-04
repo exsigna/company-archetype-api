@@ -302,45 +302,57 @@ TEXT TO ANALYSE:
         """Parse archetype response from AI - handles both regular and markdown formatting"""
         result = {"dominant": "", "secondary": "", "reasoning": ""}
         
+        # Debug: Log the raw response
+        logger.info(f"🔍 RAW RESPONSE TO PARSE: {repr(response[:500])}")
+        
         lines = response.strip().split('\n')
         reasoning_started = False
         reasoning_lines = []
         
         for i, line in enumerate(lines):
             line = line.strip()
+            logger.info(f"🔍 PARSING LINE {i}: {repr(line)}")
             
             # Handle both regular and bold markdown formatting
             if line.startswith("Dominant:") or line.startswith("**Dominant:**"):
                 value = line.replace("Dominant:", "").replace("**Dominant:**", "").strip()
                 # Clean any remaining asterisks and extra whitespace
                 result["dominant"] = re.sub(r'\*+', '', value).strip()
+                logger.info(f"🔍 FOUND DOMINANT: {result['dominant']}")
                 
             elif line.startswith("Secondary:") or line.startswith("**Secondary:**"):
                 value = line.replace("Secondary:", "").replace("**Secondary:**", "").strip()
                 # Clean any remaining asterisks and extra whitespace
                 value = re.sub(r'\*+', '', value).strip()
                 result["secondary"] = value if value.lower() != "none" else ""
+                logger.info(f"🔍 FOUND SECONDARY: {result['secondary']}")
                 
             elif line.startswith("Reasoning:") or line.startswith("**Reasoning:**"):
+                logger.info(f"🔍 FOUND REASONING HEADER")
                 # Check if reasoning is on the same line
                 value = line.replace("Reasoning:", "").replace("**Reasoning:**", "").strip()
                 if value:
                     # Reasoning is on the same line
                     result["reasoning"] = re.sub(r'\*+', '', value).strip()
+                    logger.info(f"🔍 REASONING ON SAME LINE: {result['reasoning']}")
                 else:
                     # Reasoning starts on the next line
                     reasoning_started = True
+                    logger.info(f"🔍 REASONING STARTS ON NEXT LINE")
                     
             elif reasoning_started:
                 # Collect all remaining lines as reasoning
                 if line:  # Skip empty lines
                     reasoning_lines.append(line)
+                    logger.info(f"🔍 ADDED TO REASONING: {line}")
         
         # If we collected reasoning lines, join them
         if reasoning_lines:
             reasoning_text = ' '.join(reasoning_lines)
             result["reasoning"] = re.sub(r'\*+', '', reasoning_text).strip()
+            logger.info(f"🔍 FINAL REASONING: {result['reasoning'][:200]}...")
         
+        logger.info(f"🔍 FINAL PARSED RESULT: {result}")
         return result
 
     def _fallback_archetype_analysis(self, content: str, company_name: str, company_number: str) -> Dict[str, Any]:
