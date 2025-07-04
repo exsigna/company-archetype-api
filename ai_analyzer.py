@@ -92,7 +92,7 @@ class AIArchetypeAnalyzer:
                     
                     logger.info("🚀 ATTEMPTING: Initialize OpenAI client...")
                     
-                    # FIXED: Only pass api_key parameter - no timeout, max_retries, or proxies
+                    # FIXED: ONLY pass api_key - NO other parameters
                     self.client = openai.OpenAI(api_key=openai_key.strip())
                     self.client_type = "openai"
                     logger.info("✅ SUCCESS: OpenAI client initialized")
@@ -101,9 +101,9 @@ class AIArchetypeAnalyzer:
                     try:
                         logger.info("🧪 TESTING: OpenAI API connection...")
                         test_response = self.client.chat.completions.create(
-                            model="gpt-3.5-turbo",  # Use reliable model
+                            model="gpt-3.5-turbo",
                             messages=[{"role": "user", "content": "Hi"}],
-                            max_tokens=1,  # Minimal tokens
+                            max_tokens=1,
                             temperature=0
                         )
                         logger.info("✅ SUCCESS: OpenAI API test passed")
