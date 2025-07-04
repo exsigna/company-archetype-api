@@ -100,9 +100,8 @@ class AIArchetypeAnalyzer:
                     import openai
                     logger.info(f"✅ SUCCESS: OpenAI library imported, version: {getattr(openai, '__version__', 'unknown')}")
                     
-                    logger.info("🚀 ATTEMPTING: Initialize OpenAI client...")
-                    
                     # FIXED: Clear any proxy environment variables that might interfere
+                    logger.info("🔧 CLEARING: Proxy environment variables...")
                     original_proxy_vars = {}
                     proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']
                     
@@ -113,7 +112,11 @@ class AIArchetypeAnalyzer:
                             del os.environ[var]
                             logger.info(f"🔧 Temporarily cleared proxy var: {var}")
                     
+                    if not original_proxy_vars:
+                        logger.info("🔧 No proxy variables found to clear")
+                    
                     try:
+                        logger.info("🚀 ATTEMPTING: Initialize OpenAI client...")
                         # Initialize OpenAI client with only api_key
                         self.client = openai.OpenAI(api_key=openai_key.strip())
                         self.client_type = "openai"
