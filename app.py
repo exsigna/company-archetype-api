@@ -1,4 +1,4 @@
-# OpenAI-focused Flask app for Company Archetype Analysis
+# OpenAI-focused Flask app for Company Archetype Analysis - Fixed Version
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS, cross_origin
 import os
@@ -71,7 +71,7 @@ app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
 # --- OpenAI API Health Check Route ---
 @app.route("/check-openai")
 def check_openai():
-    """Test OpenAI API connectivity"""
+    """Test OpenAI API connectivity - Fixed Version"""
     try:
         import openai
         openai_key = os.getenv("OPENAI_API_KEY")
@@ -83,6 +83,7 @@ def check_openai():
                 "configured": False
             })
             
+        # FIXED: Only pass api_key parameter
         client = openai.OpenAI(api_key=openai_key)
         
         # Test with a simple completion
@@ -110,7 +111,7 @@ def check_openai():
 # --- Debug Routes for Environment Variables ---
 @app.route('/debug-env')
 def debug_env():
-    """Debug environment variables and AI client setup"""
+    """Debug environment variables and AI client setup - Fixed Version"""
     try:
         import openai
         
@@ -135,11 +136,8 @@ def debug_env():
         # Test OpenAI client creation
         if openai_key and not openai_key.startswith('your_'):
             try:
-                client = openai.OpenAI(
-                    api_key=openai_key,
-                    timeout=30.0,
-                    max_retries=2
-                )
+                # FIXED: Only pass api_key parameter
+                client = openai.OpenAI(api_key=openai_key)
                 debug_info["client_test"]["openai_client_created"] = True
                 
                 # Test simple API call

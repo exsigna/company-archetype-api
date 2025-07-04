@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AI Analyzer - OpenAI Only Version
+AI Analyzer - OpenAI Only Version - Fixed for v1.35.0 Compatibility
 """
 
 import logging
@@ -18,7 +18,7 @@ from config import (
 logger = logging.getLogger(__name__)
 
 class AIArchetypeAnalyzer:
-    """AI-powered analyzer with OpenAI integration"""
+    """AI-powered analyzer with OpenAI integration - Fixed Version"""
     
     def __init__(self):
         """Initialize the AI analyzer with OpenAI only"""
@@ -65,7 +65,7 @@ class AIArchetypeAnalyzer:
         }
 
     def _setup_client(self):
-        """Setup the OpenAI client with better error handling and debugging"""
+        """Setup the OpenAI client - Fixed for v1.35.0 compatibility"""
         logger.info("🔧 AI CLIENT SETUP - Starting initialization...")
         
         try:
@@ -92,12 +92,8 @@ class AIArchetypeAnalyzer:
                     
                     logger.info("🚀 ATTEMPTING: Initialize OpenAI client...")
                     
-                    # Create client with proper error handling
-                    self.client = openai.OpenAI(
-                        api_key=openai_key.strip(),  # Strip whitespace
-                        timeout=30.0,
-                        max_retries=2
-                    )
+                    # FIXED: Only pass api_key parameter - no timeout, max_retries, or proxies
+                    self.client = openai.OpenAI(api_key=openai_key.strip())
                     self.client_type = "openai"
                     logger.info("✅ SUCCESS: OpenAI client initialized")
                     
@@ -133,6 +129,7 @@ class AIArchetypeAnalyzer:
                     logger.error(f"🚨 FAILED: OpenAI import - {str(import_error)}")
                 except Exception as setup_error:
                     logger.error(f"🚨 FAILED: OpenAI setup - {type(setup_error).__name__}: {str(setup_error)}")
+                    logger.error(f"🚨 Setup error details: {repr(setup_error)}")
             else:
                 if not openai_key:
                     logger.warning("⚠️ OpenAI API key not found in environment")
