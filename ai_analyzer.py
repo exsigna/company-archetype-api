@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AI Analyzer - Fixed Version with Enhanced Debugging
+AI Analyzer - Fixed Version with Enhanced Debugging and Proxy Fix
 """
 
 import logging
@@ -69,7 +69,7 @@ class AIArchetypeAnalyzer:
         logger.info(f"✅ AIArchetypeAnalyzer.__init__() completed. Client type: {self.client_type}")
 
     def _setup_client(self):
-        """Setup the AI client with comprehensive error handling and debugging"""
+        """Setup the AI client with comprehensive error handling and proxy fix"""
         try:
             logger.info("🔧 AI CLIENT SETUP - Starting initialization...")
             
@@ -102,40 +102,58 @@ class AIArchetypeAnalyzer:
                     
                     logger.info("🚀 ATTEMPTING: Initialize OpenAI client...")
                     
-                    # FIXED: ONLY pass api_key parameter - this is the critical fix!
-                    self.client = openai.OpenAI(api_key=openai_key.strip())
-                    self.client_type = "openai"
-                    logger.info("✅ SUCCESS: OpenAI client initialized")
+                    # FIXED: Clear any proxy environment variables that might interfere
+                    original_proxy_vars = {}
+                    proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']
                     
-                    # Test API connection with a minimal call
+                    # Temporarily clear proxy environment variables
+                    for var in proxy_vars:
+                        if var in os.environ:
+                            original_proxy_vars[var] = os.environ[var]
+                            del os.environ[var]
+                            logger.info(f"🔧 Temporarily cleared proxy var: {var}")
+                    
                     try:
-                        logger.info("🧪 TESTING: OpenAI API connection...")
-                        test_response = self.client.chat.completions.create(
-                            model="gpt-3.5-turbo",
-                            messages=[{"role": "user", "content": "Hi"}],
-                            max_tokens=1,
-                            temperature=0
-                        )
-                        logger.info("✅ SUCCESS: OpenAI API test passed")
-                        logger.info(f"🧪 Test response ID: {test_response.id}")
-                        return  # Success! Exit here
+                        # Initialize OpenAI client with only api_key
+                        self.client = openai.OpenAI(api_key=openai_key.strip())
+                        self.client_type = "openai"
+                        logger.info("✅ SUCCESS: OpenAI client initialized")
                         
-                    except Exception as api_test_error:
-                        logger.error(f"🚨 FAILED: OpenAI API test - {type(api_test_error).__name__}: {str(api_test_error)}")
-                        
-                        # Check specific error types
-                        error_str = str(api_test_error).lower()
-                        if "api key" in error_str or "authentication" in error_str:
-                            logger.error("💡 HINT: API key authentication failed - check if key is valid")
-                        elif "quota" in error_str or "billing" in error_str:
-                            logger.error("💡 HINT: Quota/billing issue - check OpenAI account status")
-                        elif "rate limit" in error_str:
-                            logger.error("💡 HINT: Rate limited - will continue with fallback")
-                        else:
-                            logger.error(f"💡 HINT: Unexpected API error: {str(api_test_error)}")
-                        
-                        # Keep client for analysis even if test fails
-                        logger.warning("⚠️ CONTINUING: Will attempt analysis despite API test failure")
+                        # Test API connection with a minimal call
+                        try:
+                            logger.info("🧪 TESTING: OpenAI API connection...")
+                            test_response = self.client.chat.completions.create(
+                                model="gpt-3.5-turbo",
+                                messages=[{"role": "user", "content": "Hi"}],
+                                max_tokens=1,
+                                temperature=0
+                            )
+                            logger.info("✅ SUCCESS: OpenAI API test passed")
+                            logger.info(f"🧪 Test response ID: {test_response.id}")
+                            return  # Success! Exit here
+                            
+                        except Exception as api_test_error:
+                            logger.error(f"🚨 FAILED: OpenAI API test - {type(api_test_error).__name__}: {str(api_test_error)}")
+                            
+                            # Check specific error types
+                            error_str = str(api_test_error).lower()
+                            if "api key" in error_str or "authentication" in error_str:
+                                logger.error("💡 HINT: API key authentication failed - check if key is valid")
+                            elif "quota" in error_str or "billing" in error_str:
+                                logger.error("💡 HINT: Quota/billing issue - check OpenAI account status")
+                            elif "rate limit" in error_str:
+                                logger.error("💡 HINT: Rate limited - will continue with fallback")
+                            else:
+                                logger.error(f"💡 HINT: Unexpected API error: {str(api_test_error)}")
+                            
+                            # Keep client for analysis even if test fails
+                            logger.warning("⚠️ CONTINUING: Will attempt analysis despite API test failure")
+                            
+                    finally:
+                        # Restore original proxy environment variables
+                        for var, value in original_proxy_vars.items():
+                            os.environ[var] = value
+                            logger.info(f"🔧 Restored proxy var: {var}")
                         
                 except ImportError as import_error:
                     logger.error(f"🚨 FAILED: OpenAI import - {str(import_error)}")
