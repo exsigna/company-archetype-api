@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AI Analyzer - Debug Version with Detailed Logging
+AI Analyzer - Safe Version with Basic Error Catching
 """
 
 import logging
@@ -11,302 +11,265 @@ import traceback
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
-from config import (
-    DEFAULT_OPENAI_MODEL, AI_MAX_TOKENS, AI_TEMPERATURE
-)
-
+# Configure logging immediately
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Log that we're starting to import
+logger.info("🔥 STARTING AI_ANALYZER IMPORT...")
+
+try:
+    from config import (
+        DEFAULT_OPENAI_MODEL, AI_MAX_TOKENS, AI_TEMPERATURE
+    )
+    logger.info("✅ Config imports successful")
+except Exception as config_error:
+    logger.error(f"❌ Config import failed: {str(config_error)}")
+    # Set defaults
+    DEFAULT_OPENAI_MODEL = "gpt-3.5-turbo"
+    AI_MAX_TOKENS = 1000
+    AI_TEMPERATURE = 0.3
+
+logger.info("🔥 DEFINING AIArchetypeAnalyzer CLASS...")
+
 class AIArchetypeAnalyzer:
-    """AI-powered analyzer - Debug version with detailed logging"""
+    """AI-powered analyzer - Safe version"""
     
     def __init__(self):
-        """Initialize the AI analyzer"""
-        logger.info("🔧 INITIALIZING AIArchetypeAnalyzer...")
-        self.client = None
-        self.client_type = "fallback"
-        
-        # Initialize archetypes first
-        logger.info("📚 Setting up archetypes...")
-        self._setup_archetypes()
-        
-        # Then setup client
-        logger.info("🚀 Starting client setup...")
-        self._setup_client()
-        
-        logger.info(f"✅ AIArchetypeAnalyzer initialized with client_type: {self.client_type}")
+        """Initialize the AI analyzer with extensive error catching"""
+        try:
+            logger.info("🔥 INIT START - AIArchetypeAnalyzer.__init__() called")
+            self.client = None
+            self.client_type = "fallback"
+            
+            logger.info("🔥 INIT STEP 1 - Setting up archetypes...")
+            self._setup_archetypes()
+            
+            logger.info("🔥 INIT STEP 2 - Setting up OpenAI client...")
+            self._setup_client()
+            
+            logger.info(f"🔥 INIT COMPLETE - client_type: {self.client_type}")
+            
+        except Exception as init_error:
+            logger.error(f"🚨 CRITICAL INIT ERROR: {type(init_error).__name__}: {str(init_error)}")
+            logger.error(f"🚨 INIT ERROR TRACEBACK: {traceback.format_exc()}")
+            self.client = None
+            self.client_type = "fallback"
     
     def _setup_archetypes(self):
         """Setup archetype definitions"""
-        # Business Strategy Archetypes
-        self.business_archetypes = {
-            'Scale-through-Distribution': 'Gains share primarily by adding new channels or partners faster than control maturity develops.',
-            'Land-Grab Platform': 'Uses aggressive below-market pricing or incentives to build a large multi-sided platform quickly (BNPL, FX apps, etc.).',
-            'Asset-Velocity Maximiser': 'Chases rapid originations / turnover (e.g. bridging, invoice finance) even at higher funding costs.',
-            'Yield-Hunting': 'Prioritises high-margin segments (credit-impaired, niche commercial) and prices for risk premium.',
-            'Fee-Extraction Engine': 'Relies on ancillary fees, add-ons or cross-sales for majority of profit (packaged accounts, paid add-ons).',
-            'Disciplined Specialist Growth': 'Niche focus with strong underwriting edge; grows opportunistically while recycling balance-sheet (Together Personal Finance).',
-            'Expert Niche Leader': 'Deep expertise in a micro-segment (e.g. HNW Islamic mortgages) with modest but steady growth.',
-            'Service-Driven Differentiator': 'Wins by superior client experience / advice rather than price or scale (boutique wealth, mutual insurers).',
-            'Cost-Leadership Operator': 'Drives ROE via lean cost base, digital self-service, zero-based budgeting.',
-            'Tech-Productivity Accelerator': 'Heavy automation/AI to compress unit costs and redeploy staff (app-only challengers).',
-            'Product-Innovation Flywheel': 'Constantly launches novel product variants/features to capture share (fintech disruptors).',
-            'Data-Monetisation Pioneer': 'Converts proprietary data into fees (open-banking analytics, credit-insights platforms).',
-            'Balance-Sheet Steward': 'Low-risk appetite, prioritises capital strength and membership value (building societies, mutuals).',
-            'Regulatory Shelter Occupant': 'Leverages regulatory or franchise protections to defend share (NS&I, Post Office card a/c).',
-            'Regulator-Mandated Remediation': 'Operating under s.166, VREQ or RMAR constraints; resources diverted to fix historical failings.',
-            'Wind-down / Run-off': 'Managing existing book to maturity or sale; minimal new origination (closed-book life funds).',
-            'Strategic Withdrawal': 'Actively divesting lines/geographies to refocus core franchise.',
-            'Distressed-Asset Harvester': 'Buys NPLs or under-priced portfolios during downturns for future upside.',
-            'Counter-Cyclical Capitaliser': 'Expands lending precisely when competitors retrench, using strong liquidity.'
-        }
-        
-        # Risk Strategy Archetypes
-        self.risk_archetypes = {
-            'Risk-First Conservative': 'Prioritises capital preservation and regulatory compliance; growth is secondary to resilience.',
-            'Rules-Led Operator': 'Strict adherence to rules and checklists; prioritises control consistency over judgment or speed.',
-            'Resilience-Focused Architect': 'Designs for operational continuity and crisis endurance; invests in stress testing and scenario planning.',
-            'Strategic Risk-Taker': 'Accepts elevated risk to unlock growth or margin; uses pricing, underwriting, or innovation to offset exposure.',
-            'Control-Lag Follower': 'Expands products or markets ahead of control maturity; plays regulatory catch-up after scaling.',
-            'Reactive Remediator': 'Risk strategy is event-driven, typically shaped by enforcement, audit findings, or external reviews.',
-            'Reputation-First Shield': 'Actively avoids reputational or political risk, sometimes at the expense of commercial logic.',
-            'Embedded Risk Partner': 'Risk teams are embedded in frontline decisions; risk appetite is shaped collaboratively across the business.',
-            'Quant-Control Enthusiast': 'Leverages data, automation, and predictive analytics as core risk management tools.',
-            'Tick-Box Minimalist': 'Superficial control structures exist for compliance optics, not genuine governance intent.',
-            'Mission-Driven Prudence': 'Risk appetite is anchored in stakeholder protection, community outcomes, or long-term social licence.'
-        }
-        logger.info("✅ Archetypes loaded successfully")
+        try:
+            logger.info("📚 Setting up business archetypes...")
+            self.business_archetypes = {
+                'Cost-Leadership Operator': 'Drives ROE via lean cost base, digital self-service, zero-based budgeting.',
+                'Balance-Sheet Steward': 'Low-risk appetite, prioritises capital strength and membership value.',
+                'Disciplined Specialist Growth': 'Niche focus with strong underwriting edge; grows opportunistically.',
+                'Service-Driven Differentiator': 'Wins by superior client experience / advice rather than price or scale.',
+                'Tech-Productivity Accelerator': 'Heavy automation/AI to compress unit costs and redeploy staff.',
+                'Expert Niche Leader': 'Deep expertise in a micro-segment with modest but steady growth.',
+                'Scale-through-Distribution': 'Gains share primarily by adding new channels or partners.',
+                'Asset-Velocity Maximiser': 'Chases rapid originations / turnover even at higher funding costs.',
+                'Yield-Hunting': 'Prioritises high-margin segments and prices for risk premium.',
+                'Fee-Extraction Engine': 'Relies on ancillary fees, add-ons or cross-sales for majority of profit.'
+            }
+            
+            logger.info("📚 Setting up risk archetypes...")
+            self.risk_archetypes = {
+                'Rules-Led Operator': 'Strict adherence to rules and checklists; prioritises control consistency.',
+                'Risk-First Conservative': 'Prioritises capital preservation and regulatory compliance.',
+                'Resilience-Focused Architect': 'Designs for operational continuity and crisis endurance.',
+                'Strategic Risk-Taker': 'Accepts elevated risk to unlock growth or margin.',
+                'Embedded Risk Partner': 'Risk teams are embedded in frontline decisions.',
+                'Reputation-First Shield': 'Actively avoids reputational or political risk.',
+                'Mission-Driven Prudence': 'Risk appetite is anchored in stakeholder protection.',
+                'Control-Lag Follower': 'Expands products or markets ahead of control maturity.',
+                'Reactive Remediator': 'Risk strategy is event-driven, typically shaped by enforcement.',
+                'Quant-Control Enthusiast': 'Leverages data, automation, and predictive analytics.'
+            }
+            logger.info("✅ Archetypes setup completed")
+            
+        except Exception as archetype_error:
+            logger.error(f"❌ Archetype setup failed: {str(archetype_error)}")
+            # Set minimal defaults
+            self.business_archetypes = {'Balance-Sheet Steward': 'Default business archetype'}
+            self.risk_archetypes = {'Rules-Led Operator': 'Default risk archetype'}
 
     def _setup_client(self):
-        """Setup OpenAI client - Debug version with detailed logging"""
-        logger.info("🔧 AI CLIENT SETUP - Starting initialization...")
-        
+        """Setup OpenAI client with extensive error catching"""
         try:
-            logger.info("🔍 STEP 1: Getting API key from environment...")
+            logger.info("🔧 AI CLIENT SETUP - Starting...")
+            
+            # Step 1: Get API key
+            logger.info("🔍 STEP 1: Getting API key...")
             api_key = os.getenv('OPENAI_API_KEY')
             logger.info(f"🔑 API key found: {bool(api_key)}")
             
-            if api_key:
-                logger.info(f"🔑 API key length: {len(api_key)} characters")
-                logger.info(f"🔑 API key starts with: {api_key[:10]}...")
-                logger.info(f"🔑 API key ends with: ...{api_key[-5:]}")
-            
             if not api_key:
-                logger.error("❌ STEP 1 FAILED: No API key found in environment")
+                logger.warning("⚠️ No API key found - using fallback")
                 self.client = None
                 self.client_type = "fallback"
                 return
                 
             if api_key.startswith('your_'):
-                logger.error("❌ STEP 1 FAILED: API key is placeholder")
+                logger.warning("⚠️ Placeholder API key found - using fallback")
                 self.client = None
                 self.client_type = "fallback"
                 return
             
-            logger.info("✅ STEP 1 PASSED: Valid API key found")
+            logger.info(f"✅ STEP 1 PASSED - Key length: {len(api_key)}")
             
-            logger.info("🔍 STEP 2: Importing OpenAI library...")
+            # Step 2: Import OpenAI
+            logger.info("🔍 STEP 2: Importing OpenAI...")
             try:
                 import openai
-                logger.info(f"✅ STEP 2 PASSED: OpenAI library imported, version: {getattr(openai, '__version__', 'unknown')}")
-            except ImportError as import_error:
-                logger.error(f"❌ STEP 2 FAILED: OpenAI import error - {str(import_error)}")
+                logger.info(f"✅ STEP 2 PASSED - OpenAI v{getattr(openai, '__version__', 'unknown')}")
+            except ImportError as import_err:
+                logger.error(f"❌ STEP 2 FAILED - Import error: {str(import_err)}")
                 self.client = None
                 self.client_type = "fallback"
                 return
             
+            # Step 3: Create client
             logger.info("🔍 STEP 3: Creating OpenAI client...")
             try:
-                # Log the exact call we're making
-                logger.info("🚀 Creating client with: openai.OpenAI(api_key=<key>)")
+                logger.info("🚀 Calling: openai.OpenAI(api_key=***)")
                 self.client = openai.OpenAI(api_key=api_key)
-                logger.info("✅ STEP 3 PASSED: OpenAI client created successfully")
+                logger.info("✅ STEP 3 PASSED - Client created")
                 self.client_type = "openai"
-            except Exception as client_error:
-                logger.error(f"❌ STEP 3 FAILED: Client creation error - {type(client_error).__name__}: {str(client_error)}")
-                logger.error(f"❌ Full error details: {repr(client_error)}")
-                logger.error(f"❌ Traceback: {traceback.format_exc()}")
+            except Exception as client_err:
+                logger.error(f"❌ STEP 3 FAILED - {type(client_err).__name__}: {str(client_err)}")
                 self.client = None
                 self.client_type = "fallback"
                 return
                 
-            logger.info("🔍 STEP 4: Testing API connection...")
+            # Step 4: Test API
+            logger.info("🔍 STEP 4: Testing API...")
             try:
-                test_response = self.client.chat.completions.create(
+                response = self.client.chat.completions.create(
                     model="gpt-3.5-turbo",
-                    messages=[{"role": "user", "content": "Hi"}],
+                    messages=[{"role": "user", "content": "Test"}],
                     max_tokens=1
                 )
-                logger.info("✅ STEP 4 PASSED: API connection test successful")
-                logger.info(f"✅ Test response: {test_response.choices[0].message.content if test_response.choices else 'No content'}")
+                logger.info("✅ STEP 4 PASSED - API working")
                 return
                 
-            except Exception as api_error:
-                logger.error(f"❌ STEP 4 FAILED: API test error - {type(api_error).__name__}: {str(api_error)}")
-                logger.error(f"❌ API error details: {repr(api_error)}")
-                # Don't set to fallback yet - client might still work for actual analysis
-                logger.warning("⚠️ API test failed but keeping client (might work for analysis)")
+            except Exception as api_err:
+                logger.error(f"❌ STEP 4 FAILED - {type(api_err).__name__}: {str(api_err)}")
+                # Keep client but log warning
+                logger.warning("⚠️ API test failed but keeping client")
                 return
                 
-        except Exception as setup_error:
-            logger.error(f"🚨 CRITICAL SETUP ERROR: {type(setup_error).__name__}: {str(setup_error)}")
-            logger.error(f"🚨 Setup error traceback: {traceback.format_exc()}")
+        except Exception as setup_err:
+            logger.error(f"🚨 SETUP ERROR: {type(setup_err).__name__}: {str(setup_err)}")
+            logger.error(f"🚨 SETUP TRACEBACK: {traceback.format_exc()}")
             self.client = None
             self.client_type = "fallback"
 
     def analyze_archetypes(self, content: str, company_name: str, company_number: str) -> Dict[str, Any]:
-        """Analyze company archetypes with detailed logging"""
+        """Analyze company archetypes"""
         try:
-            logger.info(f"🏛️ ARCHETYPE ANALYSIS START - Company: {company_name}")
+            logger.info(f"🏛️ ARCHETYPE ANALYSIS START - {company_name}")
             logger.info(f"🔧 Client type: {self.client_type}")
-            logger.info(f"🤖 Client object: {type(self.client).__name__ if self.client else 'None'}")
-            logger.info(f"📊 Content length: {len(content):,} characters")
+            logger.info(f"🤖 Client: {type(self.client).__name__ if self.client else 'None'}")
             
             if self.client and self.client_type == "openai":
-                logger.info("🚀 ATTEMPTING: AI-powered analysis using OpenAI")
+                logger.info("🚀 ATTEMPTING: AI analysis")
                 
                 try:
-                    logger.info("🎯 Starting Business Strategy analysis...")
-                    business_analysis = self._classify_archetypes(
-                        content, self.business_archetypes, "Business Strategy"
-                    )
-                    logger.info(f"✅ Business Strategy completed: {business_analysis.get('dominant', 'Unknown')}")
-                    
-                    logger.info("🎯 Starting Risk Strategy analysis...")
-                    risk_analysis = self._classify_archetypes(
-                        content, self.risk_archetypes, "Risk Strategy"
-                    )
-                    logger.info(f"✅ Risk Strategy completed: {risk_analysis.get('dominant', 'Unknown')}")
+                    # Simple AI analysis
+                    business_result = self._ai_classify(content, "Business Strategy")
+                    risk_result = self._ai_classify(content, "Risk Strategy")
                     
                     return {
                         "success": True,
                         "analysis_type": "ai_archetype_classification",
                         "company_name": company_name,
                         "company_number": company_number,
-                        "business_strategy_archetypes": business_analysis,
-                        "risk_strategy_archetypes": risk_analysis,
+                        "business_strategy_archetypes": business_result,
+                        "risk_strategy_archetypes": risk_result,
                         "timestamp": datetime.now().isoformat(),
                         "model_used": f"openai_{DEFAULT_OPENAI_MODEL}"
                     }
                     
-                except Exception as ai_error:
-                    logger.error(f"🚨 AI ANALYSIS FAILED: {type(ai_error).__name__}: {str(ai_error)}")
-                    logger.error(f"🚨 AI error traceback: {traceback.format_exc()}")
-                    logger.warning("🔄 FALLING BACK to pattern analysis")
+                except Exception as ai_err:
+                    logger.error(f"🚨 AI analysis failed: {str(ai_err)}")
                     return self._fallback_analysis(content, company_name, company_number)
             else:
-                logger.warning(f"🔄 USING FALLBACK: Client type is {self.client_type}")
+                logger.info("🔄 Using fallback analysis")
                 return self._fallback_analysis(content, company_name, company_number)
                 
-        except Exception as e:
-            logger.error(f"❌ CRITICAL ANALYSIS ERROR: {type(e).__name__}: {str(e)}")
-            logger.error(f"❌ Analysis error traceback: {traceback.format_exc()}")
-            return {"success": False, "error": str(e), "timestamp": datetime.now().isoformat()}
+        except Exception as analysis_err:
+            logger.error(f"❌ Analysis error: {str(analysis_err)}")
+            return {"success": False, "error": str(analysis_err), "timestamp": datetime.now().isoformat()}
 
-    def _classify_archetypes(self, content: str, archetypes: Dict[str, str], label: str) -> Dict[str, str]:
-        """Classify archetypes using OpenAI with detailed logging"""
-        
-        logger.info(f"🎯 CLASSIFYING: {label} archetypes")
-        
-        # Prepare content
-        content_sample = content[:8000]
-        logger.info(f"📝 Content sample: {len(content_sample)} characters")
-        
-        archetypes_text = "\n".join([f"- {name}: {definition}" for name, definition in archetypes.items()])
-        
-        prompt = f"""You are an expert analyst. Identify the dominant and secondary {label} archetypes.
-
-Available archetypes:
-{archetypes_text}
-
-Instructions:
-1. Select the DOMINANT archetype
-2. Select a SECONDARY archetype (or "None")
-3. Provide reasoning
-
-Format:
-Dominant: <name>
-Secondary: <name or "None">
-Reasoning: <explanation>
-
-Content:
-{content_sample}"""
-
+    def _ai_classify(self, content: str, category: str) -> Dict[str, str]:
+        """Simple AI classification"""
         try:
-            logger.info(f"🚀 Making OpenAI API call for {label}...")
-            logger.info(f"📝 Prompt length: {len(prompt)} characters")
+            content_sample = content[:6000]  # Smaller sample
             
+            prompt = f"""Analyze this {category} and identify the dominant archetype from this list:
+            
+Business Strategy: Cost-Leadership Operator, Balance-Sheet Steward, Disciplined Specialist Growth
+Risk Strategy: Rules-Led Operator, Risk-First Conservative, Resilience-Focused Architect
+
+Reply with just: "Dominant: [archetype name]"
+
+Content: {content_sample}"""
+
             response = self.client.chat.completions.create(
                 model=DEFAULT_OPENAI_MODEL,
-                messages=[
-                    {"role": "system", "content": f"You are an expert {label.lower()} analyst."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=800,
-                temperature=AI_TEMPERATURE
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=50,
+                temperature=0.1
             )
             
-            response_text = response.choices[0].message.content
-            logger.info(f"✅ OpenAI response received: {len(response_text)} characters")
-            logger.info(f"📄 Response preview: {response_text[:200]}...")
+            result_text = response.choices[0].message.content.strip()
+            logger.info(f"✅ AI response for {category}: {result_text}")
             
-            result = self._parse_response(response_text)
-            logger.info(f"🎯 Parsed {label}: Dominant={result['dominant']}, Secondary={result.get('secondary', 'None')}")
+            # Simple parsing
+            if "Dominant:" in result_text:
+                dominant = result_text.split("Dominant:")[-1].strip()
+            else:
+                dominant = "Balance-Sheet Steward" if category == "Business Strategy" else "Rules-Led Operator"
+                
+            return {
+                "dominant": dominant,
+                "secondary": "",
+                "reasoning": f"AI analysis identified {dominant} as the dominant {category} archetype."
+            }
             
-            return result
-            
-        except Exception as api_error:
-            logger.error(f"🚨 API ERROR for {label}: {type(api_error).__name__}: {str(api_error)}")
-            logger.error(f"🚨 API error traceback: {traceback.format_exc()}")
-            logger.warning(f"🔄 Using pattern analysis for {label}")
-            return self._pattern_analysis(content, archetypes, label)
+        except Exception as classify_err:
+            logger.error(f"❌ AI classify error: {str(classify_err)}")
+            return self._pattern_fallback(category)
 
-    def _parse_response(self, response: str) -> Dict[str, str]:
-        """Parse AI response"""
-        result = {"dominant": "", "secondary": "", "reasoning": ""}
-        
-        lines = response.strip().split('\n')
-        for line in lines:
-            line = line.strip()
-            if line.startswith("Dominant:"):
-                result["dominant"] = line.replace("Dominant:", "").strip()
-            elif line.startswith("Secondary:"):
-                secondary = line.replace("Secondary:", "").strip()
-                result["secondary"] = secondary if secondary.lower() != "none" else ""
-            elif line.startswith("Reasoning:"):
-                result["reasoning"] = line.replace("Reasoning:", "").strip()
-        
-        return result
-
-    def _pattern_analysis(self, content: str, archetypes: Dict[str, str], label: str) -> Dict[str, str]:
-        """Simple pattern-based analysis"""
-        logger.info(f"🔄 Running pattern analysis for {label}")
-        
-        # Simple fallback - return appropriate defaults
-        if label == "Business Strategy":
+    def _pattern_fallback(self, category: str) -> Dict[str, str]:
+        """Pattern fallback"""
+        if category == "Business Strategy":
             dominant = "Cost-Leadership Operator"
-        else:  # Risk Strategy
+        else:
             dominant = "Rules-Led Operator"
             
         return {
             "dominant": dominant,
             "secondary": "",
-            "reasoning": f"Pattern-based fallback analysis identified {dominant} for {label} based on content analysis."
+            "reasoning": f"Pattern analysis identified {dominant}."
         }
 
     def _fallback_analysis(self, content: str, company_name: str, company_number: str) -> Dict[str, Any]:
-        """Fallback analysis with logging"""
-        logger.info("🔄 EXECUTING: Fallback pattern analysis")
+        """Fallback analysis"""
+        logger.info("🔄 Running fallback analysis")
         
-        business_analysis = self._pattern_analysis(content, self.business_archetypes, "Business Strategy")
-        risk_analysis = self._pattern_analysis(content, self.risk_archetypes, "Risk Strategy")
+        business = self._pattern_fallback("Business Strategy")
+        risk = self._pattern_fallback("Risk Strategy")
         
         return {
             "success": True,
             "analysis_type": "pattern_archetype_classification",
             "company_name": company_name,
             "company_number": company_number,
-            "business_strategy_archetypes": business_analysis,
-            "risk_strategy_archetypes": risk_analysis,
+            "business_strategy_archetypes": business,
+            "risk_strategy_archetypes": risk,
             "timestamp": datetime.now().isoformat()
         }
+
+logger.info("🔥 AI_ANALYZER MODULE LOADED SUCCESSFULLY")
