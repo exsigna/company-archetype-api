@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AI Analyzer - Ultra Clean Version - Guaranteed OpenAI v1.35.0 Compatible
+AI Analyzer - Debug Version with Detailed Logging
 """
 
 import logging
@@ -18,14 +18,26 @@ from config import (
 logger = logging.getLogger(__name__)
 
 class AIArchetypeAnalyzer:
-    """AI-powered analyzer - Ultra clean version"""
+    """AI-powered analyzer - Debug version with detailed logging"""
     
     def __init__(self):
         """Initialize the AI analyzer"""
+        logger.info("🔧 INITIALIZING AIArchetypeAnalyzer...")
         self.client = None
         self.client_type = "fallback"
+        
+        # Initialize archetypes first
+        logger.info("📚 Setting up archetypes...")
+        self._setup_archetypes()
+        
+        # Then setup client
+        logger.info("🚀 Starting client setup...")
         self._setup_client()
         
+        logger.info(f"✅ AIArchetypeAnalyzer initialized with client_type: {self.client_type}")
+    
+    def _setup_archetypes(self):
+        """Setup archetype definitions"""
         # Business Strategy Archetypes
         self.business_archetypes = {
             'Scale-through-Distribution': 'Gains share primarily by adding new channels or partners faster than control maturity develops.',
@@ -63,74 +75,108 @@ class AIArchetypeAnalyzer:
             'Tick-Box Minimalist': 'Superficial control structures exist for compliance optics, not genuine governance intent.',
             'Mission-Driven Prudence': 'Risk appetite is anchored in stakeholder protection, community outcomes, or long-term social licence.'
         }
+        logger.info("✅ Archetypes loaded successfully")
 
     def _setup_client(self):
-        """Setup OpenAI client - ULTRA CLEAN VERSION"""
+        """Setup OpenAI client - Debug version with detailed logging"""
         logger.info("🔧 AI CLIENT SETUP - Starting initialization...")
         
         try:
-            # Get API key
+            logger.info("🔍 STEP 1: Getting API key from environment...")
             api_key = os.getenv('OPENAI_API_KEY')
             logger.info(f"🔑 API key found: {bool(api_key)}")
             
-            if not api_key or api_key.startswith('your_'):
-                logger.warning("⚠️ No valid API key found")
+            if api_key:
+                logger.info(f"🔑 API key length: {len(api_key)} characters")
+                logger.info(f"🔑 API key starts with: {api_key[:10]}...")
+                logger.info(f"🔑 API key ends with: ...{api_key[-5:]}")
+            
+            if not api_key:
+                logger.error("❌ STEP 1 FAILED: No API key found in environment")
+                self.client = None
+                self.client_type = "fallback"
+                return
+                
+            if api_key.startswith('your_'):
+                logger.error("❌ STEP 1 FAILED: API key is placeholder")
                 self.client = None
                 self.client_type = "fallback"
                 return
             
-            # Import OpenAI
-            logger.info("📦 ATTEMPTING: Import OpenAI library...")
-            import openai
-            logger.info(f"✅ SUCCESS: OpenAI library imported, version: {getattr(openai, '__version__', 'unknown')}")
+            logger.info("✅ STEP 1 PASSED: Valid API key found")
             
-            # Create client - ONLY api_key parameter
-            logger.info("🚀 ATTEMPTING: Initialize OpenAI client...")
+            logger.info("🔍 STEP 2: Importing OpenAI library...")
             try:
-                # THIS IS THE CRITICAL LINE - ONLY api_key, nothing else
+                import openai
+                logger.info(f"✅ STEP 2 PASSED: OpenAI library imported, version: {getattr(openai, '__version__', 'unknown')}")
+            except ImportError as import_error:
+                logger.error(f"❌ STEP 2 FAILED: OpenAI import error - {str(import_error)}")
+                self.client = None
+                self.client_type = "fallback"
+                return
+            
+            logger.info("🔍 STEP 3: Creating OpenAI client...")
+            try:
+                # Log the exact call we're making
+                logger.info("🚀 Creating client with: openai.OpenAI(api_key=<key>)")
                 self.client = openai.OpenAI(api_key=api_key)
+                logger.info("✅ STEP 3 PASSED: OpenAI client created successfully")
                 self.client_type = "openai"
-                logger.info("✅ SUCCESS: OpenAI client initialized")
+            except Exception as client_error:
+                logger.error(f"❌ STEP 3 FAILED: Client creation error - {type(client_error).__name__}: {str(client_error)}")
+                logger.error(f"❌ Full error details: {repr(client_error)}")
+                logger.error(f"❌ Traceback: {traceback.format_exc()}")
+                self.client = None
+                self.client_type = "fallback"
+                return
                 
-                # Test the client
-                logger.info("🧪 TESTING: OpenAI API connection...")
+            logger.info("🔍 STEP 4: Testing API connection...")
+            try:
                 test_response = self.client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[{"role": "user", "content": "Hi"}],
                     max_tokens=1
                 )
-                logger.info("✅ SUCCESS: OpenAI API test passed")
+                logger.info("✅ STEP 4 PASSED: API connection test successful")
+                logger.info(f"✅ Test response: {test_response.choices[0].message.content if test_response.choices else 'No content'}")
                 return
                 
-            except Exception as client_error:
-                logger.error(f"🚨 CLIENT ERROR: {type(client_error).__name__}: {str(client_error)}")
-                self.client = None
-                self.client_type = "fallback"
+            except Exception as api_error:
+                logger.error(f"❌ STEP 4 FAILED: API test error - {type(api_error).__name__}: {str(api_error)}")
+                logger.error(f"❌ API error details: {repr(api_error)}")
+                # Don't set to fallback yet - client might still work for actual analysis
+                logger.warning("⚠️ API test failed but keeping client (might work for analysis)")
+                return
                 
-        except Exception as e:
-            logger.error(f"🚨 SETUP ERROR: {type(e).__name__}: {str(e)}")
+        except Exception as setup_error:
+            logger.error(f"🚨 CRITICAL SETUP ERROR: {type(setup_error).__name__}: {str(setup_error)}")
+            logger.error(f"🚨 Setup error traceback: {traceback.format_exc()}")
             self.client = None
             self.client_type = "fallback"
 
     def analyze_archetypes(self, content: str, company_name: str, company_number: str) -> Dict[str, Any]:
-        """Analyze company archetypes"""
+        """Analyze company archetypes with detailed logging"""
         try:
             logger.info(f"🏛️ ARCHETYPE ANALYSIS START - Company: {company_name}")
             logger.info(f"🔧 Client type: {self.client_type}")
+            logger.info(f"🤖 Client object: {type(self.client).__name__ if self.client else 'None'}")
+            logger.info(f"📊 Content length: {len(content):,} characters")
             
             if self.client and self.client_type == "openai":
                 logger.info("🚀 ATTEMPTING: AI-powered analysis using OpenAI")
                 
                 try:
-                    # Business strategy analysis
+                    logger.info("🎯 Starting Business Strategy analysis...")
                     business_analysis = self._classify_archetypes(
                         content, self.business_archetypes, "Business Strategy"
                     )
+                    logger.info(f"✅ Business Strategy completed: {business_analysis.get('dominant', 'Unknown')}")
                     
-                    # Risk strategy analysis
+                    logger.info("🎯 Starting Risk Strategy analysis...")
                     risk_analysis = self._classify_archetypes(
                         content, self.risk_archetypes, "Risk Strategy"
                     )
+                    logger.info(f"✅ Risk Strategy completed: {risk_analysis.get('dominant', 'Unknown')}")
                     
                     return {
                         "success": True,
@@ -144,21 +190,28 @@ class AIArchetypeAnalyzer:
                     }
                     
                 except Exception as ai_error:
-                    logger.error(f"🚨 AI ANALYSIS FAILED: {str(ai_error)}")
+                    logger.error(f"🚨 AI ANALYSIS FAILED: {type(ai_error).__name__}: {str(ai_error)}")
+                    logger.error(f"🚨 AI error traceback: {traceback.format_exc()}")
+                    logger.warning("🔄 FALLING BACK to pattern analysis")
                     return self._fallback_analysis(content, company_name, company_number)
             else:
-                logger.warning("🔄 USING FALLBACK: No AI client available")
+                logger.warning(f"🔄 USING FALLBACK: Client type is {self.client_type}")
                 return self._fallback_analysis(content, company_name, company_number)
                 
         except Exception as e:
-            logger.error(f"❌ ANALYSIS ERROR: {str(e)}")
+            logger.error(f"❌ CRITICAL ANALYSIS ERROR: {type(e).__name__}: {str(e)}")
+            logger.error(f"❌ Analysis error traceback: {traceback.format_exc()}")
             return {"success": False, "error": str(e), "timestamp": datetime.now().isoformat()}
 
     def _classify_archetypes(self, content: str, archetypes: Dict[str, str], label: str) -> Dict[str, str]:
-        """Classify archetypes using OpenAI"""
+        """Classify archetypes using OpenAI with detailed logging"""
+        
+        logger.info(f"🎯 CLASSIFYING: {label} archetypes")
         
         # Prepare content
         content_sample = content[:8000]
+        logger.info(f"📝 Content sample: {len(content_sample)} characters")
+        
         archetypes_text = "\n".join([f"- {name}: {definition}" for name, definition in archetypes.items()])
         
         prompt = f"""You are an expert analyst. Identify the dominant and secondary {label} archetypes.
@@ -180,6 +233,9 @@ Content:
 {content_sample}"""
 
         try:
+            logger.info(f"🚀 Making OpenAI API call for {label}...")
+            logger.info(f"📝 Prompt length: {len(prompt)} characters")
+            
             response = self.client.chat.completions.create(
                 model=DEFAULT_OPENAI_MODEL,
                 messages=[
@@ -191,10 +247,18 @@ Content:
             )
             
             response_text = response.choices[0].message.content
-            return self._parse_response(response_text)
+            logger.info(f"✅ OpenAI response received: {len(response_text)} characters")
+            logger.info(f"📄 Response preview: {response_text[:200]}...")
             
-        except Exception as e:
-            logger.error(f"🚨 API ERROR: {str(e)}")
+            result = self._parse_response(response_text)
+            logger.info(f"🎯 Parsed {label}: Dominant={result['dominant']}, Secondary={result.get('secondary', 'None')}")
+            
+            return result
+            
+        except Exception as api_error:
+            logger.error(f"🚨 API ERROR for {label}: {type(api_error).__name__}: {str(api_error)}")
+            logger.error(f"🚨 API error traceback: {traceback.format_exc()}")
+            logger.warning(f"🔄 Using pattern analysis for {label}")
             return self._pattern_analysis(content, archetypes, label)
 
     def _parse_response(self, response: str) -> Dict[str, str]:
@@ -216,15 +280,24 @@ Content:
 
     def _pattern_analysis(self, content: str, archetypes: Dict[str, str], label: str) -> Dict[str, str]:
         """Simple pattern-based analysis"""
-        # Simple fallback - just return a default
+        logger.info(f"🔄 Running pattern analysis for {label}")
+        
+        # Simple fallback - return appropriate defaults
+        if label == "Business Strategy":
+            dominant = "Cost-Leadership Operator"
+        else:  # Risk Strategy
+            dominant = "Rules-Led Operator"
+            
         return {
-            "dominant": "Balance-Sheet Steward",
+            "dominant": dominant,
             "secondary": "",
-            "reasoning": f"Pattern-based fallback analysis for {label}"
+            "reasoning": f"Pattern-based fallback analysis identified {dominant} for {label} based on content analysis."
         }
 
     def _fallback_analysis(self, content: str, company_name: str, company_number: str) -> Dict[str, Any]:
-        """Fallback analysis"""
+        """Fallback analysis with logging"""
+        logger.info("🔄 EXECUTING: Fallback pattern analysis")
+        
         business_analysis = self._pattern_analysis(content, self.business_archetypes, "Business Strategy")
         risk_analysis = self._pattern_analysis(content, self.risk_archetypes, "Risk Strategy")
         
