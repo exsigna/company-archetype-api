@@ -331,9 +331,10 @@ TEXT TO ANALYSE:
                 logger.info(f"🔍 FOUND REASONING HEADER")
                 # Check if reasoning is on the same line
                 value = line.replace("Reasoning:", "").replace("**Reasoning:**", "").strip()
+                value = re.sub(r'\*+', '', value).strip()  # Clean asterisks first
                 if value:
                     # Reasoning is on the same line
-                    result["reasoning"] = re.sub(r'\*+', '', value).strip()
+                    result["reasoning"] = value
                     logger.info(f"🔍 REASONING ON SAME LINE: {result['reasoning']}")
                 else:
                     # Reasoning starts on the next line
