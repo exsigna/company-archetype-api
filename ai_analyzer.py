@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AI Analyzer - Fixed Version with Enhanced Debugging and Proxy Fix
+AI Analyzer - Fixed Version with Enhanced Debugging, Proxy Fix, and Parser Fix
 """
 
 import logging
@@ -299,19 +299,20 @@ TEXT TO ANALYSE:
             return self._fallback_single_archetype_analysis(content, archetype_dict, label)
 
     def _parse_archetype_response(self, response: str) -> Dict[str, str]:
-        """Parse archetype response from AI"""
+        """Parse archetype response from AI - handles both regular and markdown formatting"""
         result = {"dominant": "", "secondary": "", "reasoning": ""}
         
         lines = response.strip().split('\n')
         for line in lines:
             line = line.strip()
-            if line.startswith("Dominant:"):
-                result["dominant"] = line.replace("Dominant:", "").strip()
-            elif line.startswith("Secondary:"):
-                secondary = line.replace("Secondary:", "").strip()
+            # Handle both regular and bold markdown formatting
+            if line.startswith("Dominant:") or line.startswith("**Dominant:**"):
+                result["dominant"] = line.replace("Dominant:", "").replace("**Dominant:**", "").strip()
+            elif line.startswith("Secondary:") or line.startswith("**Secondary:**"):
+                secondary = line.replace("Secondary:", "").replace("**Secondary:**", "").strip()
                 result["secondary"] = secondary if secondary.lower() != "none" else ""
-            elif line.startswith("Reasoning:"):
-                result["reasoning"] = line.replace("Reasoning:", "").strip()
+            elif line.startswith("Reasoning:") or line.startswith("**Reasoning:**"):
+                result["reasoning"] = line.replace("Reasoning:", "").replace("**Reasoning:**", "").strip()
         
         return result
 
