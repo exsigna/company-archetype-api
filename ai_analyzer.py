@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AI Analyzer - Fixed Version (Original File with OpenAI Fix)
+AI Analyzer - Fixed Version with Enhanced Debugging
 """
 
 import logging
@@ -22,9 +22,9 @@ class AIArchetypeAnalyzer:
     
     def __init__(self):
         """Initialize the AI analyzer with detailed debugging"""
+        logger.info("🚀 AIArchetypeAnalyzer.__init__() starting...")
         self.client = None
         self.client_type = "fallback"
-        self._setup_client()
         
         # Business Strategy Archetypes with definitions
         self.business_archetypes = {
@@ -63,18 +63,28 @@ class AIArchetypeAnalyzer:
             'Tick-Box Minimalist': 'Superficial control structures exist for compliance optics, not genuine governance intent.',
             'Mission-Driven Prudence': 'Risk appetite is anchored in stakeholder protection, community outcomes, or long-term social licence.'
         }
+        
+        logger.info("🔧 About to call _setup_client()...")
+        self._setup_client()
+        logger.info(f"✅ AIArchetypeAnalyzer.__init__() completed. Client type: {self.client_type}")
 
     def _setup_client(self):
-        """Setup the AI client - FIXED VERSION"""
-        logger.info("🔧 AI CLIENT SETUP - Starting initialization...")
-        
+        """Setup the AI client with comprehensive error handling and debugging"""
         try:
+            logger.info("🔧 AI CLIENT SETUP - Starting initialization...")
+            
             # Check for OpenAI API key first
             openai_key = os.getenv('OPENAI_API_KEY')
             logger.info(f"🔑 OpenAI API key check - Found: {bool(openai_key)}")
             
             if openai_key:
                 logger.info(f"🔑 OpenAI key length: {len(openai_key)} characters")
+                # Safe preview of the key
+                if len(openai_key) > 10:
+                    logger.info(f"🔑 Key preview: {openai_key[:10]}...{openai_key[-4:]}")
+                else:
+                    logger.info(f"🔑 Key preview: {openai_key[:5]}... (short key)")
+                
                 # Check if it's a placeholder
                 if openai_key.startswith('your_'):
                     logger.warning("🚨 DETECTED: OpenAI API key is placeholder value!")
@@ -107,6 +117,7 @@ class AIArchetypeAnalyzer:
                             temperature=0
                         )
                         logger.info("✅ SUCCESS: OpenAI API test passed")
+                        logger.info(f"🧪 Test response ID: {test_response.id}")
                         return  # Success! Exit here
                         
                     except Exception as api_test_error:
@@ -123,16 +134,20 @@ class AIArchetypeAnalyzer:
                         else:
                             logger.error(f"💡 HINT: Unexpected API error: {str(api_test_error)}")
                         
-                        # Don't return here - keep client for analysis
+                        # Keep client for analysis even if test fails
+                        logger.warning("⚠️ CONTINUING: Will attempt analysis despite API test failure")
                         
                 except ImportError as import_error:
                     logger.error(f"🚨 FAILED: OpenAI import - {str(import_error)}")
+                    logger.error("💡 HINT: Make sure 'openai' package is installed")
                 except Exception as setup_error:
                     logger.error(f"🚨 FAILED: OpenAI setup - {type(setup_error).__name__}: {str(setup_error)}")
                     logger.error(f"🚨 Setup error details: {repr(setup_error)}")
+                    logger.error(f"🚨 Setup traceback: {traceback.format_exc()}")
             else:
                 if not openai_key:
                     logger.warning("⚠️ OpenAI API key not found in environment")
+                    logger.warning("💡 HINT: Set OPENAI_API_KEY environment variable")
                 else:
                     logger.warning("⚠️ OpenAI API key is empty or invalid")
         
@@ -143,8 +158,8 @@ class AIArchetypeAnalyzer:
             self.client_type = "fallback"
             
         except Exception as critical_error:
-            logger.error(f"🚨 CRITICAL: Error in AI setup - {type(critical_error).__name__}: {str(critical_error)}")
-            logger.error(f"🚨 CRITICAL: Error traceback: {traceback.format_exc()}")
+            logger.error(f"🚨 CRITICAL ERROR in _setup_client: {type(critical_error).__name__}: {str(critical_error)}")
+            logger.error(f"🚨 CRITICAL traceback: {traceback.format_exc()}")
             self.client = None
             self.client_type = "fallback"
 
@@ -186,6 +201,7 @@ class AIArchetypeAnalyzer:
                 except Exception as ai_error:
                     logger.error(f"🚨 AI ANALYSIS FAILED: {type(ai_error).__name__}: {str(ai_error)}")
                     logger.error(f"🚨 AI Error details: {repr(ai_error)}")
+                    logger.error(f"🚨 AI Error traceback: {traceback.format_exc()}")
                     logger.warning("🔄 FALLING BACK: to pattern-based analysis due to AI failure")
                     return self._fallback_archetype_analysis(content, company_name, company_number)
             else:
@@ -194,6 +210,7 @@ class AIArchetypeAnalyzer:
                 
         except Exception as e:
             logger.error(f"❌ CRITICAL ERROR in analyze_archetypes: {type(e).__name__}: {str(e)}")
+            logger.error(f"❌ CRITICAL traceback: {traceback.format_exc()}")
             return self._create_error_result(str(e))
 
     def _classify_dominant_and_secondary_archetypes(self, content: str, archetype_dict: Dict[str, str], label: str) -> Dict[str, Any]:
@@ -254,6 +271,7 @@ TEXT TO ANALYSE:
         except Exception as api_error:
             logger.error(f"🚨 API ERROR for {label}: {type(api_error).__name__}: {str(api_error)}")
             logger.error(f"🚨 API Error repr: {repr(api_error)}")
+            logger.error(f"🚨 API Error traceback: {traceback.format_exc()}")
             
             # Fallback to pattern analysis for this category
             logger.warning(f"🔄 FALLBACK: Using pattern analysis for {label}")
