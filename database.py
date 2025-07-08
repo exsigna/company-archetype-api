@@ -348,44 +348,38 @@ class AnalysisDatabase:
                         except:
                             raw_response = {}
                     
-                    # Check for wrong company name patterns
+                    # VERY SPECIFIC CHECK - Only delete the HSBC analysis
                     company_name = analysis.get('company_name', '')
                     if 'HSBC' in company_name and company_number == '02613335':
                         is_invalid = True
-                        reasons.append("Wrong company name (HSBC)")
+                        reasons.append("Wrong company name (HSBC for Together Personal Finance)")
                     
-                    # Check for generic reasoning
+                    # Only check for extremely generic reasoning (the exact test data)
                     business_reasoning = analysis.get('business_strategy_reasoning', '')
-                    if 'demonstrates strong growth-oriented strategies' in business_reasoning:
+                    if business_reasoning == 'The company demonstrates strong growth-oriented strategies with focus on market expansion and innovation.':
                         is_invalid = True
-                        reasons.append("Generic business reasoning")
+                        reasons.append("Exact generic business reasoning match")
                     
                     risk_reasoning = analysis.get('risk_strategy_reasoning', '')
-                    if 'Conservative risk management approach' in risk_reasoning:
+                    if risk_reasoning == 'Conservative risk management approach with emphasis on regulatory compliance and stable operations.':
                         is_invalid = True
-                        reasons.append("Generic risk reasoning")
+                        reasons.append("Exact generic risk reasoning match")
                     
-                    # Check for incomplete raw_response
-                    if not raw_response or not isinstance(raw_response, dict):
-                        is_invalid = True
-                        reasons.append("Missing or invalid raw_response")
-                    elif not raw_response.get('business_strategy') or not raw_response.get('risk_strategy'):
-                        is_invalid = True
-                        reasons.append("Incomplete raw_response structure")
+                    # Check for the specific incomplete raw_response pattern
+                    if raw_response and isinstance(raw_response, dict):
+                        if (raw_response.get('analysis_complete') == True and 
+                            raw_response.get('success') == True and 
+                            len(raw_response) == 2):  # Only has these 2 keys
+                            is_invalid = True
+                            reasons.append("Incomplete raw_response (only analysis_complete and success)")
                     
-                    # Check reasoning length
-                    if len(business_reasoning) < 100:
-                        is_invalid = True
-                        reasons.append("Business reasoning too short")
-                    
-                    if len(risk_reasoning) < 100:
-                        is_invalid = True
-                        reasons.append("Risk reasoning too short")
-                    
-                    if is_invalid:
+                    # Additional safety check - only delete if multiple red flags
+                    if len(reasons) >= 2:  # Must have at least 2 problems to be deleted
                         logger.info(f"Deleting invalid analysis ID {analysis['id']}: {reasons}")
                         if self.delete_analysis_by_id(analysis['id'], company_number):
                             deleted_count += 1
+                    else:
+                        logger.info(f"Keeping analysis ID {analysis['id']} - only {len(reasons)} issues: {reasons}")
                 
                 logger.info(f"Cleanup completed: deleted {deleted_count} invalid analyses for company {company_number}")
                 return deleted_count
