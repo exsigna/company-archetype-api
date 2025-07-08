@@ -13,6 +13,17 @@ from typing import Dict, List, Optional
 import os
 from contextlib import contextmanager
 
+logger = logging.getLogger(__name__)
+
+# DEBUG: Log environment variables immediately when module loads
+logger.info("=== DATABASE MODULE LOADING DEBUG ===")
+logger.info(f"DB_HOST from env: {os.getenv('DB_HOST')}")
+logger.info(f"DB_NAME from env: {os.getenv('DB_NAME')}")
+logger.info(f"DB_USER from env: {os.getenv('DB_USER')}")
+logger.info(f"DB_PASSWORD set: {'YES' if os.getenv('DB_PASSWORD') else 'NO'}")
+logger.info(f"DB_PORT from env: {os.getenv('DB_PORT', 3306)}")
+logger.info("=== END MODULE LOADING DEBUG ===")
+
 # Database configuration
 DB_CONFIG = {
     'host': os.getenv('DB_HOST'),
@@ -25,8 +36,6 @@ DB_CONFIG = {
     'autocommit': True
 }
 
-logger = logging.getLogger(__name__)
-
 class AnalysisDatabase:
     """Handles database operations for analysis results"""
     
@@ -34,15 +43,12 @@ class AnalysisDatabase:
         """Initialize database connection"""
         self.config = DB_CONFIG
         
-        # DEBUG SECTION - Remove after fixing
-        logger.info("=== DATABASE DEBUG INFO ===")
-        logger.info(f"DB_HOST from env: {os.getenv('DB_HOST')}")
-        logger.info(f"DB_NAME from env: {os.getenv('DB_NAME')}")
-        logger.info(f"DB_USER from env: {os.getenv('DB_USER')}")
-        logger.info(f"DB_PASSWORD set: {'YES' if os.getenv('DB_PASSWORD') else 'NO'}")
-        logger.info(f"DB_PORT from env: {os.getenv('DB_PORT', 3306)}")
+        # Additional debug for the final config
+        logger.info("=== DATABASE CONFIG DEBUG ===")
         logger.info(f"Final config host: {self.config['host']}")
-        logger.info("=== END DEBUG INFO ===")
+        logger.info(f"Final config user: {self.config['user']}")
+        logger.info(f"Final config database: {self.config['database']}")
+        logger.info("=== END CONFIG DEBUG ===")
         
         logger.info("Database configuration initialized")
         
@@ -263,6 +269,165 @@ class AnalysisDatabase:
         except Error as e:
             logger.error(f"Error searching companies: {e}")
             return []
+    
+    def delete_analysis_by_id(self, analysis_id: int, company_number: str = None) -> bool:
+        """
+        Delete a specific analysis by ID
+        
+        Args:
+            analysis_id: ID of the analysis to delete
+            company_number: Optional company number for additional validation
+            
+        Returns:
+            bool: True if deletion was successful, False otherwise
+        """
+        try:
+            with self.get_connection() as connection:
+                cursor = connection.cursor()
+                
+                # Optional: Verify the analysis belongs to the company
+                if company_number:
+                    verify_query = "SELECT id FROM analysis_results WHERE id = %s AND company_number = %s"
+                    cursor.execute(verify_query, (analysis_id, company_number))
+                    if not cursor.fetchone():
+                        logger.warning(f"Analysis {analysis_id} not found for company {company_number}")
+                        return False
+                
+                # Delete from analysis_history table first (foreign key constraint)
+                history_delete_query = "DELETE FROM analysis_history WHERE analysis_id = %s"
+                cursor.execute(history_delete_query, (analysis_id,))
+                history_rows = cursor.rowcount
+                logger.info(f"Deleted {history_rows} history records for analysis {analysis_id}")
+                
+                # Delete from main analysis_results table
+                main_delete_query = "DELETE FROM analysis_results WHERE id = %s"
+                cursor.execute(main_delete_query, (analysis_id,))
+                main_rows = cursor.rowcount
+                
+                if main_rows > 0:
+                    logger.info(f"Successfully deleted analysis {analysis_id}")
+                    return True
+                else:
+                    logger.warning(f"No analysis found with ID {analysis_id}")
+                    return False
+                    
+        except Error as e:
+            logger.error(f"Error deleting analysis {analysis_id}: {e}")
+            return False
+    
+    def cleanup_invalid_analyses(self, company_number: str) -> int:
+        """
+        Remove all invalid analysis entries for a company
+        
+        Args:
+            company_number: Company registration number
+            
+        Returns:
+            int: Number of analyses deleted
+        """
+        try:
+            with self.get_connection() as connection:
+                cursor = connection.cursor(dictionary=True)
+                
+                # Get all analyses for the company
+                query = "SELECT * FROM analysis_results WHERE company_number = %s"
+                cursor.execute(query, (company_number,))
+                analyses = cursor.fetchall()
+                
+                deleted_count = 0
+                
+                for analysis in analyses:
+                    is_invalid = False
+                    reasons = []
+                    
+                    # Parse raw_response if it's a string
+                    raw_response = analysis.get('raw_response')
+                    if isinstance(raw_response, str):
+                        try:
+                            raw_response = json.loads(raw_response)
+                        except:
+                            raw_response = {}
+                    
+                    # Check for wrong company name patterns
+                    company_name = analysis.get('company_name', '')
+                    if 'HSBC' in company_name and company_number == '02613335':
+                        is_invalid = True
+                        reasons.append("Wrong company name (HSBC)")
+                    
+                    # Check for generic reasoning
+                    business_reasoning = analysis.get('business_strategy_reasoning', '')
+                    if 'demonstrates strong growth-oriented strategies' in business_reasoning:
+                        is_invalid = True
+                        reasons.append("Generic business reasoning")
+                    
+                    risk_reasoning = analysis.get('risk_strategy_reasoning', '')
+                    if 'Conservative risk management approach' in risk_reasoning:
+                        is_invalid = True
+                        reasons.append("Generic risk reasoning")
+                    
+                    # Check for incomplete raw_response
+                    if not raw_response or not isinstance(raw_response, dict):
+                        is_invalid = True
+                        reasons.append("Missing or invalid raw_response")
+                    elif not raw_response.get('business_strategy') or not raw_response.get('risk_strategy'):
+                        is_invalid = True
+                        reasons.append("Incomplete raw_response structure")
+                    
+                    # Check reasoning length
+                    if len(business_reasoning) < 100:
+                        is_invalid = True
+                        reasons.append("Business reasoning too short")
+                    
+                    if len(risk_reasoning) < 100:
+                        is_invalid = True
+                        reasons.append("Risk reasoning too short")
+                    
+                    if is_invalid:
+                        logger.info(f"Deleting invalid analysis ID {analysis['id']}: {reasons}")
+                        if self.delete_analysis_by_id(analysis['id'], company_number):
+                            deleted_count += 1
+                
+                logger.info(f"Cleanup completed: deleted {deleted_count} invalid analyses for company {company_number}")
+                return deleted_count
+                
+        except Error as e:
+            logger.error(f"Error during cleanup for company {company_number}: {e}")
+            return 0
+    
+    def get_analysis_statistics(self) -> Dict:
+        """Get database statistics"""
+        try:
+            with self.get_connection() as connection:
+                cursor = connection.cursor(dictionary=True)
+                
+                stats = {}
+                
+                # Total analyses
+                cursor.execute("SELECT COUNT(*) as total FROM analysis_results")
+                stats['total_analyses'] = cursor.fetchone()['total']
+                
+                # Completed analyses
+                cursor.execute("SELECT COUNT(*) as completed FROM analysis_results WHERE status = 'completed'")
+                stats['completed_analyses'] = cursor.fetchone()['completed']
+                
+                # Unique companies
+                cursor.execute("SELECT COUNT(DISTINCT company_number) as companies FROM analysis_results")
+                stats['unique_companies'] = cursor.fetchone()['companies']
+                
+                # Recent analyses (last 7 days)
+                cursor.execute("""
+                    SELECT COUNT(*) as recent 
+                    FROM analysis_results 
+                    WHERE analysis_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                """)
+                stats['recent_analyses'] = cursor.fetchone()['recent']
+                
+                logger.info(f"Database statistics: {stats}")
+                return stats
+                
+        except Error as e:
+            logger.error(f"Error getting database statistics: {e}")
+            return {}
 
 
 # Test the database connection
@@ -271,6 +436,15 @@ if __name__ == "__main__":
     success = db.test_connection()
     if success:
         print("✅ Database connection successful!")
+        
+        # Show statistics
+        stats = db.get_analysis_statistics()
+        if stats:
+            print(f"📊 Database Statistics:")
+            print(f"   Total analyses: {stats.get('total_analyses', 0)}")
+            print(f"   Completed: {stats.get('completed_analyses', 0)}")
+            print(f"   Unique companies: {stats.get('unique_companies', 0)}")
+            print(f"   Recent (7 days): {stats.get('recent_analyses', 0)}")
     else:
         print("❌ Database connection failed!")
         print("Check your environment variables:")
