@@ -93,6 +93,7 @@ def home():
             'recent': '/api/analysis/recent',
             'search': '/api/analysis/search/<term>',
             'test_db': '/api/database/test',
+            'preview_cleanup': '/api/database/preview-cleanup/<company_number>',
             'cleanup_analysis': '/api/database/cleanup/<company_number>/<analysis_id>',
             'cleanup_invalid': '/api/database/cleanup/invalid/<company_number>',
             'database_stats': '/api/database/stats'
@@ -100,9 +101,11 @@ def home():
         'usage': {
             'lookup_company': 'GET /api/company/lookup/Marine - Check previous analyses',
             'check_company': 'POST /api/company/check {"company_identifier": "Marine"}',
+            'preview_cleanup': 'GET /api/database/preview-cleanup/02613335 - Preview what would be deleted',
             'cleanup_analysis': 'DELETE /api/database/cleanup/02613335/1 - Delete specific analysis',
-            'cleanup_invalid': 'DELETE /api/database/cleanup/invalid/02613335 - Clean invalid analyses'
-        }
+            'cleanup_invalid': 'DELETE /api/database/cleanup/invalid/02613335 - Clean invalid analyses (USE WITH CAUTION)'
+        },
+        'safety_note': 'Always use preview-cleanup before cleanup-invalid to see what will be deleted'
     })
 
 @app.route('/health')
@@ -584,7 +587,91 @@ def test_database_endpoint():
         logger.error(f"Database test failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# NEW DATABASE CLEANUP ENDPOINTS
+# SAFE DATABASE CLEANUP ENDPOINTS
+@app.route('/api/database/preview-cleanup/<company_number>')
+def preview_cleanup(company_number):
+    """Preview what would be deleted without actually deleting - SAFETY FIRST"""
+    try:
+        logger.info(f"Previewing cleanup for company {company_number}")
+        
+        # Get all analyses for the company
+        analyses = db.get_analysis_by_company(company_number)
+        
+        preview_results = []
+        
+        for analysis in analyses:
+            issues = []
+            will_delete = False
+            
+            # Parse raw_response if it's a string
+            raw_response = analysis.get('raw_response')
+            if isinstance(raw_response, str):
+                try:
+                    raw_response = json.loads(raw_response)
+                except:
+                    raw_response = {}
+            
+            # Check for HSBC specifically (wrong company)
+            company_name = analysis.get('company_name', '')
+            if 'HSBC' in company_name and company_number == '02613335':
+                issues.append("Wrong company name (HSBC for Together Personal Finance)")
+            
+            # Check for exact generic text matches (not partial)
+            business_reasoning = analysis.get('business_strategy_reasoning', '')
+            if business_reasoning == 'The company demonstrates strong growth-oriented strategies with focus on market expansion and innovation.':
+                issues.append("Exact generic business reasoning match")
+            
+            risk_reasoning = analysis.get('risk_strategy_reasoning', '')
+            if risk_reasoning == 'Conservative risk management approach with emphasis on regulatory compliance and stable operations.':
+                issues.append("Exact generic risk reasoning match")
+            
+            # Check for the specific incomplete raw_response pattern
+            if raw_response and isinstance(raw_response, dict):
+                if (raw_response.get('analysis_complete') == True and 
+                    raw_response.get('success') == True and 
+                    len(raw_response) == 2):  # Only has these 2 keys
+                    issues.append("Incomplete raw_response (only analysis_complete and success)")
+            
+            # Only mark for deletion if multiple specific red flags (VERY CONSERVATIVE)
+            if len(issues) >= 2:
+                will_delete = True
+            
+            preview_results.append({
+                'analysis_id': analysis.get('id'),
+                'company_name': analysis.get('company_name'),
+                'analysis_date': analysis.get('analysis_date'),
+                'years_analyzed': analysis.get('years_analyzed'),
+                'business_strategy': analysis.get('business_strategy_dominant'),
+                'risk_strategy': analysis.get('risk_strategy_dominant'),
+                'issues_found': issues,
+                'will_delete': will_delete,
+                'reasoning_length': {
+                    'business': len(business_reasoning),
+                    'risk': len(risk_reasoning)
+                },
+                'raw_response_keys': list(raw_response.keys()) if isinstance(raw_response, dict) else 'invalid'
+            })
+        
+        to_delete = [r for r in preview_results if r['will_delete']]
+        to_keep = [r for r in preview_results if not r['will_delete']]
+        
+        return jsonify({
+            'success': True,
+            'company_number': company_number,
+            'total_analyses': len(preview_results),
+            'will_delete': len(to_delete),
+            'will_keep': len(to_keep),
+            'to_delete': to_delete,
+            'to_keep': to_keep,
+            'all_analyses': preview_results,
+            'warning': '⚠️  This is a preview only - no data has been deleted',
+            'safety_note': 'Only analyses with multiple specific red flags will be deleted'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error previewing cleanup for {company_number}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/database/cleanup/<company_number>/<int:analysis_id>', methods=['DELETE'])
 def delete_specific_analysis(company_number, analysis_id):
     """Delete a specific analysis by ID"""
@@ -615,17 +702,18 @@ def delete_specific_analysis(company_number, analysis_id):
 
 @app.route('/api/database/cleanup/invalid/<company_number>', methods=['DELETE'])
 def cleanup_invalid_analyses(company_number):
-    """Remove all invalid analysis entries for a company"""
+    """Remove all invalid analysis entries for a company - USE WITH EXTREME CAUTION"""
     try:
-        logger.info(f"Cleaning up invalid analyses for company {company_number}")
+        logger.warning(f"⚠️  DANGEROUS OPERATION: Cleaning up invalid analyses for company {company_number}")
         
-        # Call database method to cleanup invalid analyses
+        # Call database method to cleanup invalid analyses (now much more conservative)
         deleted_count = db.cleanup_invalid_analyses(company_number)
         
         return jsonify({
             'success': True,
             'message': f'Cleaned up {deleted_count} invalid analyses for company {company_number}',
-            'deleted_count': deleted_count
+            'deleted_count': deleted_count,
+            'warning': 'This operation permanently deleted data. Use preview-cleanup first in future.'
         })
         
     except Exception as e:
