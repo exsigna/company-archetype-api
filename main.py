@@ -87,10 +87,16 @@ def home():
         'endpoints': {
             'analyze': '/api/analyze',
             'years': '/api/years/<company_number>',
+            'lookup_company': '/api/company/lookup/<company_name_or_number>',
+            'check_company': '/api/company/check',
             'history': '/api/analysis/history/<company_number>',
             'recent': '/api/analysis/recent',
             'search': '/api/analysis/search/<term>',
             'test_db': '/api/database/test'
+        },
+        'usage': {
+            'lookup_company': 'GET /api/company/lookup/Marine - Check previous analyses',
+            'check_company': 'POST /api/company/check {"company_identifier": "Marine"}'
         }
     })
 
@@ -98,6 +104,136 @@ def home():
 def health_check():
     """Health check endpoint"""
     return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()})
+
+@app.route('/api/company/lookup/<company_identifier>')
+def lookup_company_analysis(company_identifier):
+    """
+    Look up previous analyses for a company by name or number
+    
+    Args:
+        company_identifier: Company name or company number
+    
+    Returns:
+        JSON with previous analysis metadata or empty if none found
+    """
+    try:
+        logger.info(f"Looking up previous analyses for: {company_identifier}")
+        
+        # First, try to find by company number (exact match)
+        if validate_company_number(company_identifier):
+            # It's a valid company number format
+            results = db.get_analysis_by_company(company_identifier)
+            if results:
+                # Format the response
+                analysis_metadata = []
+                for result in results:
+                    metadata = {
+                        'analysis_id': result.get('id'),
+                        'company_number': result.get('company_number'),
+                        'company_name': result.get('company_name'),
+                        'analysis_date': result.get('analysis_date'),
+                        'years_analyzed': result.get('years_analyzed', []),
+                        'files_processed': result.get('files_processed', 0),
+                        'business_strategy': result.get('business_strategy_dominant'),
+                        'risk_strategy': result.get('risk_strategy_dominant'),
+                        'status': result.get('status')
+                    }
+                    analysis_metadata.append(metadata)
+                
+                return jsonify({
+                    'success': True,
+                    'found': True,
+                    'search_term': company_identifier,
+                    'search_type': 'company_number',
+                    'company_number': results[0].get('company_number'),
+                    'company_name': results[0].get('company_name'),
+                    'total_analyses': len(results),
+                    'analyses': analysis_metadata
+                })
+        
+        # If not a company number or no results, search by company name
+        search_results = db.search_companies(company_identifier)
+        
+        if search_results:
+            # Get detailed analysis for the first matching company
+            first_match = search_results[0]
+            detailed_analyses = db.get_analysis_by_company(first_match['company_number'])
+            
+            # Format the response
+            analysis_metadata = []
+            for result in detailed_analyses:
+                metadata = {
+                    'analysis_id': result.get('id'),
+                    'company_number': result.get('company_number'),
+                    'company_name': result.get('company_name'),
+                    'analysis_date': result.get('analysis_date'),
+                    'years_analyzed': result.get('years_analyzed', []),
+                    'files_processed': result.get('files_processed', 0),
+                    'business_strategy': result.get('business_strategy_dominant'),
+                    'risk_strategy': result.get('risk_strategy_dominant'),
+                    'status': result.get('status')
+                }
+                analysis_metadata.append(metadata)
+            
+            return jsonify({
+                'success': True,
+                'found': True,
+                'search_term': company_identifier,
+                'search_type': 'company_name',
+                'company_number': first_match['company_number'],
+                'company_name': first_match['company_name'],
+                'total_analyses': len(detailed_analyses),
+                'analyses': analysis_metadata,
+                'other_matches': len(search_results) - 1 if len(search_results) > 1 else 0
+            })
+        
+        # No previous analyses found
+        return jsonify({
+            'success': True,
+            'found': False,
+            'search_term': company_identifier,
+            'message': 'No previous analyses found for this company',
+            'suggestion': 'Use /api/analyze to create a new analysis'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error looking up company {company_identifier}: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/company/check', methods=['POST'])
+def check_company_before_analysis():
+    """
+    Check if a company has previous analyses before running new analysis
+    Accepts both company name and company number
+    
+    Request body:
+    {
+        "company_identifier": "Marine and General" or "00000006"
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data or not data.get('company_identifier'):
+            return jsonify({
+                'success': False,
+                'error': 'company_identifier is required'
+            }), 400
+        
+        company_identifier = data.get('company_identifier', '').strip()
+        
+        # Use the lookup function
+        return lookup_company_analysis(company_identifier)
+        
+    except Exception as e:
+        logger.error(f"Error checking company: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 @app.route('/api/years/<company_number>')
 def get_available_years(company_number):
