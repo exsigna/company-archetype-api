@@ -33,6 +33,17 @@ class AnalysisDatabase:
     def __init__(self):
         """Initialize database connection"""
         self.config = DB_CONFIG
+        
+        # DEBUG SECTION - Remove after fixing
+        logger.info("=== DATABASE DEBUG INFO ===")
+        logger.info(f"DB_HOST from env: {os.getenv('DB_HOST')}")
+        logger.info(f"DB_NAME from env: {os.getenv('DB_NAME')}")
+        logger.info(f"DB_USER from env: {os.getenv('DB_USER')}")
+        logger.info(f"DB_PASSWORD set: {'YES' if os.getenv('DB_PASSWORD') else 'NO'}")
+        logger.info(f"DB_PORT from env: {os.getenv('DB_PORT', 3306)}")
+        logger.info(f"Final config host: {self.config['host']}")
+        logger.info("=== END DEBUG INFO ===")
+        
         logger.info("Database configuration initialized")
         
     @contextmanager
