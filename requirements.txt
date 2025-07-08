@@ -48,4 +48,7 @@ python-decouple==3.8
 # System monitoring for memory management
 psutil==5.9.6
 
+# Database connectivity
+mysql-connector-python==8.0.33
+
 httpx==0.27.2
