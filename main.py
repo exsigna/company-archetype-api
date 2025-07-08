@@ -92,11 +92,16 @@ def home():
             'history': '/api/analysis/history/<company_number>',
             'recent': '/api/analysis/recent',
             'search': '/api/analysis/search/<term>',
-            'test_db': '/api/database/test'
+            'test_db': '/api/database/test',
+            'cleanup_analysis': '/api/database/cleanup/<company_number>/<analysis_id>',
+            'cleanup_invalid': '/api/database/cleanup/invalid/<company_number>',
+            'database_stats': '/api/database/stats'
         },
         'usage': {
             'lookup_company': 'GET /api/company/lookup/Marine - Check previous analyses',
-            'check_company': 'POST /api/company/check {"company_identifier": "Marine"}'
+            'check_company': 'POST /api/company/check {"company_identifier": "Marine"}',
+            'cleanup_analysis': 'DELETE /api/database/cleanup/02613335/1 - Delete specific analysis',
+            'cleanup_invalid': 'DELETE /api/database/cleanup/invalid/02613335 - Clean invalid analyses'
         }
     })
 
@@ -577,6 +582,70 @@ def test_database_endpoint():
         })
     except Exception as e:
         logger.error(f"Database test failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# NEW DATABASE CLEANUP ENDPOINTS
+@app.route('/api/database/cleanup/<company_number>/<int:analysis_id>', methods=['DELETE'])
+def delete_specific_analysis(company_number, analysis_id):
+    """Delete a specific analysis by ID"""
+    try:
+        logger.info(f"Attempting to delete analysis ID {analysis_id} for company {company_number}")
+        
+        # Call database method to delete specific analysis
+        success = db.delete_analysis_by_id(analysis_id, company_number)
+        
+        if success:
+            logger.info(f"Successfully deleted analysis ID {analysis_id}")
+            return jsonify({
+                'success': True,
+                'message': f'Deleted analysis {analysis_id} for company {company_number}'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Analysis not found or could not be deleted'
+            }), 404
+            
+    except Exception as e:
+        logger.error(f"Error deleting analysis {analysis_id}: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/database/cleanup/invalid/<company_number>', methods=['DELETE'])
+def cleanup_invalid_analyses(company_number):
+    """Remove all invalid analysis entries for a company"""
+    try:
+        logger.info(f"Cleaning up invalid analyses for company {company_number}")
+        
+        # Call database method to cleanup invalid analyses
+        deleted_count = db.cleanup_invalid_analyses(company_number)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Cleaned up {deleted_count} invalid analyses for company {company_number}',
+            'deleted_count': deleted_count
+        })
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up analyses for {company_number}: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/database/stats')
+def get_database_stats():
+    """Get database statistics"""
+    try:
+        stats = db.get_analysis_statistics()
+        return jsonify({
+            'success': True,
+            'statistics': stats
+        })
+    except Exception as e:
+        logger.error(f"Error getting database stats: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # Error handlers
