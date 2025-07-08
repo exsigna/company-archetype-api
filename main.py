@@ -48,27 +48,34 @@ except Exception as e:
     logger.error(f"Error initializing components: {e}")
     # Don't exit - let the app start so we can see the error
 
-@app.before_first_request
+# Flag to track if initialization has been done
+_app_initialized = False
+
+@app.before_request
 def initialize_app():
     """Initialize app and test database connection"""
-    logger.info("Initializing Strategic Analysis API...")
-    
-    try:
-        # Validate configuration
-        if not validate_config():
-            logger.error("Configuration validation failed")
-            return
+    global _app_initialized
+    if not _app_initialized:
+        _app_initialized = True
         
-        # Test database connection
-        success = db.test_connection()
-        if success:
-            logger.info("✅ Database connected successfully")
-        else:
-            logger.error("❌ Database connection failed")
+        logger.info("Initializing Strategic Analysis API...")
         
-        logger.info("✅ Strategic Analysis API initialized")
-    except Exception as e:
-        logger.error(f"Error during initialization: {e}")
+        try:
+            # Validate configuration
+            if not validate_config():
+                logger.error("Configuration validation failed")
+                return
+            
+            # Test database connection
+            success = db.test_connection()
+            if success:
+                logger.info("✅ Database connected successfully")
+            else:
+                logger.error("❌ Database connection failed")
+            
+            logger.info("✅ Strategic Analysis API initialized")
+        except Exception as e:
+            logger.error(f"Error during initialization: {e}")
 
 @app.route('/')
 def home():
