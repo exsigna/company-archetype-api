@@ -56,13 +56,18 @@ class AIArchetypeAnalyzer:
             api_key = os.environ.get('OPENAI_API_KEY')
             if api_key:
                 from openai import OpenAI
-                self.openai_client = OpenAI(api_key=api_key)
+                # Remove any problematic parameters
+                self.openai_client = OpenAI(
+                    api_key=api_key,
+                    timeout=30.0
+                )
                 self.client_type = "openai"
                 logger.info("✅ OpenAI client initialized")
             else:
                 logger.warning("⚠️ No OpenAI API key found")
         except Exception as e:
             logger.warning(f"OpenAI setup failed: {e}")
+            logger.info("Falling back to pattern-based analysis")
     
     def _init_anthropic(self):
         """Initialize Anthropic client"""
