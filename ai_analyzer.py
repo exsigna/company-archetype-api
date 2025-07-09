@@ -1,382 +1,362 @@
 #!/usr/bin/env python3
 """
-AI Analyzer - Version 2.0 - Complete Enhanced Multi-File Analysis
-DEPLOYMENT READY - Replace your existing ai_analyzer.py with this file
+AI Archetype Analyzer for Strategic Analysis
+Uses OpenAI/Anthropic APIs for intelligent business and risk strategy classification
 """
 
+import os
 import logging
 import json
-import os
-import re
-import traceback
-from datetime import datetime
-from typing import Dict, Any, Optional, List
-
-# Safe config import with fallbacks
-try:
-    from config import DEFAULT_OPENAI_MODEL, AI_MAX_TOKENS, AI_TEMPERATURE
-except ImportError:
-    DEFAULT_OPENAI_MODEL = "gpt-4"
-    AI_MAX_TOKENS = 2000
-    AI_TEMPERATURE = 0.3
+from typing import Dict, List, Any, Optional
+import time
 
 logger = logging.getLogger(__name__)
 
 class AIArchetypeAnalyzer:
-    """Version 2.0 - Enhanced AI-powered analyzer with complete multi-file support"""
+    """AI-powered archetype analysis for business and risk strategies"""
     
     def __init__(self):
-        """Initialize the AI analyzer"""
-        logger.info("🚀 AIArchetypeAnalyzer v2.0 starting...")
-        self.client = None
+        """Initialize AI analyzer with available providers"""
         self.client_type = "fallback"
+        self.openai_client = None
+        self.anthropic_client = None
         
-        # Business Strategy Archetypes
+        logger.info("🚀 AIArchetypeAnalyzer v2.0 starting...")
+        
+        # Try to initialize OpenAI
+        self._init_openai()
+        
+        # Try to initialize Anthropic as backup
+        if self.client_type == "fallback":
+            self._init_anthropic()
+        
+        # Define archetypes
         self.business_archetypes = {
-            'Scale-through-Distribution': 'Gains share primarily by adding new channels or partners faster than control maturity develops.',
-            'Land-Grab Platform': 'Uses aggressive below-market pricing or incentives to build a large multi-sided platform quickly (BNPL, FX apps, etc.).',
-            'Asset-Velocity Maximiser': 'Chases rapid originations / turnover (e.g. bridging, invoice finance) even at higher funding costs.',
-            'Yield-Hunting': 'Prioritises high-margin segments (credit-impaired, niche commercial) and prices for risk premium.',
-            'Fee-Extraction Engine': 'Relies on ancillary fees, add-ons or cross-sales for majority of profit (packaged accounts, paid add-ons).',
-            'Disciplined Specialist Growth': 'Niche focus with strong underwriting edge; grows opportunistically while recycling balance-sheet (Together Personal Finance).',
-            'Expert Niche Leader': 'Deep expertise in a micro-segment (e.g. HNW Islamic mortgages) with modest but steady growth.',
-            'Service-Driven Differentiator': 'Wins by superior client experience / advice rather than price or scale (boutique wealth, mutual insurers).',
-            'Cost-Leadership Operator': 'Drives ROE via lean cost base, digital self-service, zero-based budgeting.',
-            'Tech-Productivity Accelerator': 'Heavy automation/AI to compress unit costs and redeploy staff (app-only challengers).',
-            'Product-Innovation Flywheel': 'Constantly launches novel product variants/features to capture share (fintech disruptors).',
-            'Data-Monetisation Pioneer': 'Converts proprietary data into fees (open-banking analytics, credit-insights platforms).',
-            'Balance-Sheet Steward': 'Low-risk appetite, prioritises capital strength and membership value (building societies, mutuals).',
-            'Regulatory Shelter Occupant': 'Leverages regulatory or franchise protections to defend share (NS&I, Post Office card a/c).',
-            'Regulator-Mandated Remediation': 'Operating under s.166, VREQ or RMAR constraints; resources diverted to fix historical failings.',
-            'Wind-down / Run-off': 'Managing existing book to maturity or sale; minimal new origination (closed-book life funds).',
-            'Strategic Withdrawal': 'Actively divesting lines/geographies to refocus core franchise.',
-            'Distressed-Asset Harvester': 'Buys NPLs or under-priced portfolios during downturns for future upside.',
-            'Counter-Cyclical Capitaliser': 'Expands lending precisely when competitors retrench, using strong liquidity.'
+            "Growth": "Expansion-focused, market share acquisition, scaling operations",
+            "Innovation": "R&D investment, new product development, technology advancement", 
+            "Efficiency": "Cost optimization, process improvement, operational excellence",
+            "Customer-Centric": "Customer satisfaction, service quality, relationship building",
+            "Diversification": "Market expansion, product portfolio broadening, risk spreading",
+            "Conservative": "Steady operations, incremental growth, stability focus"
         }
         
-        # Risk Strategy Archetypes
         self.risk_archetypes = {
-            'Risk-First Conservative': 'Prioritises capital preservation and regulatory compliance; growth is secondary to resilience.',
-            'Rules-Led Operator': 'Strict adherence to rules and checklists; prioritises control consistency over judgment or speed.',
-            'Resilience-Focused Architect': 'Designs for operational continuity and crisis endurance; invests in stress testing and scenario planning.',
-            'Strategic Risk-Taker': 'Accepts elevated risk to unlock growth or margin; uses pricing, underwriting, or innovation to offset exposure.',
-            'Control-Lag Follower': 'Expands products or markets ahead of control maturity; plays regulatory catch-up after scaling.',
-            'Reactive Remediator': 'Risk strategy is event-driven, typically shaped by enforcement, audit findings, or external reviews.',
-            'Reputation-First Shield': 'Actively avoids reputational or political risk, sometimes at the expense of commercial logic.',
-            'Embedded Risk Partner': 'Risk teams are embedded in frontline decisions; risk appetite is shaped collaboratively across the business.',
-            'Quant-Control Enthusiast': 'Leverages data, automation, and predictive analytics as core risk management tools.',
-            'Tick-Box Minimalist': 'Superficial control structures exist for compliance optics, not genuine governance intent.',
-            'Mission-Driven Prudence': 'Risk appetite is anchored in stakeholder protection, community outcomes, or long-term social licence.'
+            "Conservative": "Risk-averse, compliance-focused, stability prioritized",
+            "Balanced": "Moderate risk tolerance, diversified approach, measured decisions",
+            "Aggressive": "High risk tolerance, growth-oriented, bold strategic moves",
+            "Adaptive": "Flexible risk management, responsive to market changes",
+            "Compliance-Focused": "Regulatory adherence, governance emphasis, structured approach"
         }
         
-        self._setup_client()
         logger.info(f"✅ AIArchetypeAnalyzer v2.0 completed. Client type: {self.client_type}")
-
-    def _setup_client(self):
-        """Setup the AI client"""
+    
+    def _init_openai(self):
+        """Initialize OpenAI client"""
         try:
-            openai_key = os.getenv('OPENAI_API_KEY')
-            
-            if openai_key and openai_key.strip() and not openai_key.startswith('your_'):
-                try:
-                    import openai
-                    
-                    # Clear proxy vars
-                    proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']
-                    for var in proxy_vars:
-                        if var in os.environ:
-                            del os.environ[var]
-                    
-                    self.client = openai.OpenAI(api_key=openai_key.strip())
-                    self.client_type = "openai"
-                    
-                    # Test connection
-                    test_response = self.client.chat.completions.create(
-                        model="gpt-3.5-turbo",
-                        messages=[{"role": "user", "content": "Hi"}],
-                        max_tokens=1,
-                        temperature=0
-                    )
-                    logger.info("✅ OpenAI client initialized successfully")
-                    return
-                    
-                except Exception as e:
-                    logger.warning(f"OpenAI setup failed: {e}")
-            
-            # Fallback
-            self.client = None
-            self.client_type = "fallback"
-            logger.warning("Using fallback pattern analysis")
-            
-        except Exception as e:
-            logger.error(f"Critical error in client setup: {e}")
-            self.client = None
-            self.client_type = "fallback"
-
-    def analyze_archetypes(self, content: str, company_name: str, company_number: str, 
-                         extracted_content: List[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Enhanced archetype analysis with multi-file support"""
-        try:
-            logger.info(f"🏛️ Starting archetype analysis for {company_name}")
-            
-            if self.client and self.client_type == "openai":
-                try:
-                    # Multi-file or single analysis
-                    if extracted_content and len(extracted_content) > 1:
-                        logger.info("🎯 Using multi-file analysis")
-                        business_analysis = self._analyze_multiple_files(
-                            extracted_content, self.business_archetypes, "Business Strategy"
-                        )
-                        risk_analysis = self._analyze_multiple_files(
-                            extracted_content, self.risk_archetypes, "Risk Strategy"
-                        )
-                    else:
-                        logger.info("🎯 Using single content analysis")
-                        business_analysis = self._classify_archetypes(
-                            content, self.business_archetypes, "Business Strategy"
-                        )
-                        risk_analysis = self._classify_archetypes(
-                            content, self.risk_archetypes, "Risk Strategy"
-                        )
-                    
-                    return {
-                        "success": True,
-                        "analysis_type": "ai_multi_file_classification" if extracted_content and len(extracted_content) > 1 else "ai_archetype_classification",
-                        "company_name": company_name,
-                        "company_number": company_number,
-                        "business_strategy_archetypes": business_analysis,
-                        "risk_strategy_archetypes": risk_analysis,
-                        "timestamp": datetime.now().isoformat(),
-                        "model_used": f"openai_{DEFAULT_OPENAI_MODEL}",
-                        "analysis_metadata": {
-                            "files_analyzed": len(extracted_content) if extracted_content else 1,
-                            "total_content_chars": len(content),
-                            "confidence_level": "high" if extracted_content and len(extracted_content) > 1 else "medium"
-                        }
-                    }
-                    
-                except Exception as ai_error:
-                    logger.error(f"AI analysis failed: {ai_error}")
-                    return self._fallback_analysis(content, company_name, company_number, extracted_content)
+            api_key = os.environ.get('OPENAI_API_KEY')
+            if api_key:
+                from openai import OpenAI
+                self.openai_client = OpenAI(api_key=api_key)
+                self.client_type = "openai"
+                logger.info("✅ OpenAI client initialized")
             else:
-                return self._fallback_analysis(content, company_name, company_number, extracted_content)
+                logger.warning("⚠️ No OpenAI API key found")
+        except Exception as e:
+            logger.warning(f"OpenAI setup failed: {e}")
+    
+    def _init_anthropic(self):
+        """Initialize Anthropic client"""
+        try:
+            api_key = os.environ.get('ANTHROPIC_API_KEY')
+            if api_key:
+                import anthropic
+                self.anthropic_client = anthropic.Anthropic(api_key=api_key)
+                self.client_type = "anthropic"
+                logger.info("✅ Anthropic client initialized")
+            else:
+                logger.warning("⚠️ No Anthropic API key found")
+        except Exception as e:
+            logger.warning(f"Anthropic setup failed: {e}")
+            logger.warning("Using fallback pattern analysis")
+    
+    def analyze_archetypes(self, content: str, company_name: str, company_number: str, 
+                          extracted_content: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+        """
+        Analyze business and risk archetypes
+        
+        Args:
+            content: Combined document content
+            company_name: Company name
+            company_number: Company number
+            extracted_content: Individual file data
+            
+        Returns:
+            Analysis results
+        """
+        try:
+            if self.client_type == "openai":
+                return self._analyze_with_openai(content, company_name, company_number, extracted_content)
+            elif self.client_type == "anthropic":
+                return self._analyze_with_anthropic(content, company_name, company_number, extracted_content)
+            else:
+                return self._analyze_with_fallback(content, company_name, company_number, extracted_content)
                 
         except Exception as e:
-            logger.error(f"Critical error in analyze_archetypes: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "analysis_type": "error",
-                "timestamp": datetime.now().isoformat()
-            }
-
-    def _analyze_multiple_files(self, extracted_content: List[Dict[str, Any]], 
-                               archetype_dict: Dict[str, str], label: str) -> Dict[str, Any]:
-        """Analyze multiple files individually and synthesize"""
-        logger.info(f"📊 Multi-file analysis: {label} across {len(extracted_content)} files")
-        
-        individual_analyses = []
-        for i, file_data in enumerate(extracted_content):
-            file_content = file_data.get('content', '')[:12000]  # 12K per file
-            
-            try:
-                analysis = self._classify_archetypes(file_content, archetype_dict, f"{label} - File {i+1}")
-                analysis['source_file'] = file_data.get('filename', f'File {i+1}')
-                individual_analyses.append(analysis)
-            except Exception as e:
-                logger.warning(f"Failed to analyze file {i+1}: {e}")
-                continue
-        
-        if individual_analyses:
-            return self._synthesize_analyses(individual_analyses, label)
-        else:
-            # Fallback to combined analysis
-            combined = "\n\n".join([f"=== File {i+1} ===\n{f.get('content', '')[:8000]}" 
-                                  for i, f in enumerate(extracted_content)])
-            return self._classify_archetypes(combined, archetype_dict, label)
-
-    def _synthesize_analyses(self, individual_analyses: List[Dict[str, Any]], label: str) -> Dict[str, Any]:
-        """Synthesize multiple analyses - KEY FIX: Include ALL reasoning"""
-        dominant_counts = {}
-        secondary_counts = {}
-        all_reasoning = []
-        
-        for analysis in individual_analyses:
-            dominant = analysis.get('dominant', '')
-            secondary = analysis.get('secondary', '')
-            
-            if dominant:
-                dominant_counts[dominant] = dominant_counts.get(dominant, 0) + 1
-            if secondary:
-                secondary_counts[secondary] = secondary_counts.get(secondary, 0) + 1
-            
-            # Collect FULL reasoning
-            file_name = analysis.get('source_file', 'Unknown')
-            reasoning = analysis.get('reasoning', '')
-            if reasoning:
-                all_reasoning.append(f"[{file_name}] {reasoning}")
-        
-        # Determine final archetypes
-        final_dominant = max(dominant_counts.items(), key=lambda x: x[1])[0] if dominant_counts else "Balance-Sheet Steward"
-        final_secondary = ""
-        
-        if secondary_counts:
-            for archetype, count in sorted(secondary_counts.items(), key=lambda x: x[1], reverse=True):
-                if archetype != final_dominant:
-                    final_secondary = archetype
-                    break
-        
-        # Create comprehensive reasoning
-        total_files = len(individual_analyses)
-        confidence = dominant_counts.get(final_dominant, 0) / total_files
-        
-        synthesized_reasoning = f"Multi-file analysis across {total_files} documents shows {final_dominant} as the dominant archetype "
-        synthesized_reasoning += f"(appears in {dominant_counts.get(final_dominant, 0)}/{total_files} files, {confidence:.0%} confidence). "
-        
-        if final_secondary:
-            synthesized_reasoning += f"Secondary archetype {final_secondary} identified in {secondary_counts.get(final_secondary, 0)} files. "
-        
-        # KEY FIX: Include ALL reasoning, not truncated
-        if all_reasoning:
-            synthesized_reasoning += "Key evidence: " + "; ".join(all_reasoning)
-        
-        return {
-            "dominant": final_dominant,
-            "secondary": final_secondary,
-            "reasoning": synthesized_reasoning,
-            "confidence_score": confidence
-        }
-
-    def _classify_archetypes(self, content: str, archetype_dict: Dict[str, str], label: str) -> Dict[str, Any]:
-        """Classify archetypes using OpenAI"""
-        content_sample = content[:15000]  # Use 15K chars
-        
-        archetypes_text = "\n".join([f"- {name}: {definition}" for name, definition in archetype_dict.items()])
-        
-        prompt = f"""Analyze this UK financial services firm and identify the dominant and secondary {label} archetypes.
-
-Available {label} Archetypes:
-{archetypes_text}
-
-Provide detailed evidence-based reasoning.
-
-Format:
-**Dominant:** <archetype_name>
-**Secondary:** <archetype_name or "None">
-**Reasoning:** <detailed explanation>
-
-Content:
-{content_sample}"""
-
+            logger.error(f"Error in archetype analysis: {e}")
+            return self._analyze_with_fallback(content, company_name, company_number, extracted_content)
+    
+    def _analyze_with_openai(self, content: str, company_name: str, company_number: str, 
+                           extracted_content: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
+        """Analyze using OpenAI API"""
         try:
-            response = self.client.chat.completions.create(
-                model=DEFAULT_OPENAI_MODEL,
+            # Sample content for analysis
+            sample_content = content[:15000] if len(content) > 15000 else content
+            
+            prompt = self._create_analysis_prompt(sample_content, company_name)
+            
+            response = self.openai_client.chat.completions.create(
+                model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": f"You are an expert {label.lower()} analyst."},
+                    {"role": "system", "content": "You are an expert business strategy analyst."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=1500,
-                temperature=AI_TEMPERATURE
+                temperature=0.3,
+                max_tokens=1000
             )
             
-            return self._parse_response(response.choices[0].message.content)
+            analysis_text = response.choices[0].message.content
+            return self._parse_ai_response(analysis_text, "openai", extracted_content)
             
         except Exception as e:
-            logger.error(f"OpenAI API error: {e}")
-            return self._fallback_single_analysis(content, archetype_dict, label)
-
-    def _parse_response(self, response: str) -> Dict[str, str]:
-        """Parse AI response"""
-        result = {"dominant": "", "secondary": "", "reasoning": ""}
-        
-        lines = response.strip().split('\n')
-        reasoning_lines = []
-        reasoning_started = False
-        
-        for line in lines:
-            line = line.strip()
+            logger.error(f"OpenAI analysis failed: {e}")
+            return self._analyze_with_fallback(content, company_name, company_number, extracted_content)
+    
+    def _analyze_with_anthropic(self, content: str, company_name: str, company_number: str,
+                              extracted_content: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
+        """Analyze using Anthropic API"""
+        try:
+            # Sample content for analysis
+            sample_content = content[:15000] if len(content) > 15000 else content
             
-            if line.startswith("**Dominant:**") or line.startswith("Dominant:"):
-                value = re.sub(r'\*+', '', line.replace("Dominant:", "")).strip()
-                result["dominant"] = value
-                
-            elif line.startswith("**Secondary:**") or line.startswith("Secondary:"):
-                value = re.sub(r'\*+', '', line.replace("Secondary:", "")).strip()
-                result["secondary"] = value if value.lower() != "none" else ""
-                
-            elif line.startswith("**Reasoning:**") or line.startswith("Reasoning:"):
-                value = re.sub(r'\*+', '', line.replace("Reasoning:", "")).strip()
-                if value:
-                    result["reasoning"] = value
-                else:
-                    reasoning_started = True
-                    
-            elif reasoning_started and line:
-                reasoning_lines.append(line)
-        
-        if reasoning_lines:
-            result["reasoning"] = ' '.join(reasoning_lines)
-        
-        return result
+            prompt = self._create_analysis_prompt(sample_content, company_name)
+            
+            response = self.anthropic_client.messages.create(
+                model="claude-3-haiku-20240307",
+                max_tokens=1000,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            
+            analysis_text = response.content[0].text
+            return self._parse_ai_response(analysis_text, "anthropic", extracted_content)
+            
+        except Exception as e:
+            logger.error(f"Anthropic analysis failed: {e}")
+            return self._analyze_with_fallback(content, company_name, company_number, extracted_content)
+    
+    def _analyze_with_fallback(self, content: str, company_name: str, company_number: str,
+                             extracted_content: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
+        """Fallback pattern-based analysis"""
+        try:
+            # Pattern-based keyword analysis
+            content_lower = content.lower()
+            
+            # Business strategy analysis
+            business_scores = {}
+            for archetype, description in self.business_archetypes.items():
+                score = self._calculate_pattern_score(content_lower, archetype.lower())
+                business_scores[archetype] = score
+            
+            # Risk strategy analysis  
+            risk_scores = {}
+            for archetype, description in self.risk_archetypes.items():
+                score = self._calculate_pattern_score(content_lower, archetype.lower())
+                risk_scores[archetype] = score
+            
+            # Find dominant strategies
+            business_dominant = max(business_scores, key=business_scores.get)
+            risk_dominant = max(risk_scores, key=risk_scores.get)
+            
+            return {
+                'business_strategy_archetypes': {
+                    'dominant': business_dominant,
+                    'secondary': self._get_secondary(business_scores, business_dominant),
+                    'scores': business_scores,
+                    'reasoning': f"Pattern analysis indicates {business_dominant.lower()} orientation based on keyword frequency and context."
+                },
+                'risk_strategy_archetypes': {
+                    'dominant': risk_dominant,
+                    'secondary': self._get_secondary(risk_scores, risk_dominant),
+                    'scores': risk_scores,
+                    'reasoning': f"Analysis suggests {risk_dominant.lower()} risk management approach based on content patterns."
+                },
+                'analysis_type': 'fallback_pattern',
+                'confidence_level': 'medium',
+                'files_analyzed': len(extracted_content) if extracted_content else 1,
+                'content_length': len(content)
+            }
+            
+        except Exception as e:
+            logger.error(f"Fallback analysis failed: {e}")
+            return self._get_default_analysis()
+    
+    def _create_analysis_prompt(self, content: str, company_name: str) -> str:
+        """Create analysis prompt for AI"""
+        return f"""
+Analyze the following company documents for {company_name} and classify their business and risk strategies.
 
-    def _fallback_analysis(self, content: str, company_name: str, company_number: str, 
-                          extracted_content: List[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Pattern-based fallback analysis"""
-        business_analysis = self._fallback_single_analysis(content, self.business_archetypes, "Business Strategy")
-        risk_analysis = self._fallback_single_analysis(content, self.risk_archetypes, "Risk Strategy")
-        
-        return {
-            "success": True,
-            "analysis_type": "pattern_fallback",
-            "company_name": company_name,
-            "company_number": company_number,
-            "business_strategy_archetypes": business_analysis,
-            "risk_strategy_archetypes": risk_analysis,
-            "timestamp": datetime.now().isoformat()
-        }
+Business Strategy Archetypes:
+{json.dumps(self.business_archetypes, indent=2)}
 
-    def _fallback_single_analysis(self, content: str, archetype_dict: Dict[str, str], label: str) -> Dict[str, str]:
-        """Pattern-based analysis"""
-        content_lower = content.lower()
-        scores = {}
-        
-        # Simple keyword patterns
-        patterns = {
-            'Disciplined Specialist Growth': ['specialist', 'niche', 'underwriting'],
-            'Balance-Sheet Steward': ['capital', 'prudent', 'conservative'],
-            'Resilience-Focused Architect': ['stress.*testing', 'resilience', 'continuity'],
-            'Risk-First Conservative': ['capital.*preservation', 'compliance']
-        }
-        
-        for archetype in archetype_dict.keys():
-            if archetype in patterns:
-                score = sum(len(re.findall(pattern, content_lower)) for pattern in patterns[archetype])
-                scores[archetype] = score
-        
-        # Default to common archetypes if no matches
-        if not scores or max(scores.values()) == 0:
-            if label == "Business Strategy":
-                dominant = "Disciplined Specialist Growth"
+Risk Strategy Archetypes:
+{json.dumps(self.risk_archetypes, indent=2)}
+
+Document Content:
+{content}
+
+Please provide:
+1. Primary business strategy archetype and reasoning
+2. Primary risk strategy archetype and reasoning
+3. Secondary options for both
+4. Confidence level (high/medium/low)
+
+Format your response as JSON with keys: business_primary, business_reasoning, risk_primary, risk_reasoning, business_secondary, risk_secondary, confidence.
+"""
+    
+    def _parse_ai_response(self, response_text: str, client_type: str, extracted_content: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
+        """Parse AI response into structured format"""
+        try:
+            # Try to extract JSON from response
+            import re
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            
+            if json_match:
+                ai_data = json.loads(json_match.group())
+                
+                return {
+                    'business_strategy_archetypes': {
+                        'dominant': ai_data.get('business_primary', 'Growth'),
+                        'secondary': ai_data.get('business_secondary', 'Innovation'),
+                        'reasoning': ai_data.get('business_reasoning', 'AI-generated analysis')
+                    },
+                    'risk_strategy_archetypes': {
+                        'dominant': ai_data.get('risk_primary', 'Balanced'),
+                        'secondary': ai_data.get('risk_secondary', 'Conservative'), 
+                        'reasoning': ai_data.get('risk_reasoning', 'AI-generated analysis')
+                    },
+                    'analysis_type': f'ai_{client_type}',
+                    'confidence_level': ai_data.get('confidence', 'medium'),
+                    'files_analyzed': len(extracted_content) if extracted_content else 1,
+                    'ai_raw_response': response_text
+                }
             else:
-                dominant = "Resilience-Focused Architect"
-        else:
-            dominant = max(scores.items(), key=lambda x: x[1])[0]
+                # Fallback parsing
+                return self._parse_text_response(response_text, client_type, extracted_content)
+                
+        except Exception as e:
+            logger.error(f"Error parsing AI response: {e}")
+            return self._get_default_analysis()
+    
+    def _parse_text_response(self, response_text: str, client_type: str, extracted_content: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
+        """Parse non-JSON AI response"""
+        # Simple text parsing for business and risk strategies
+        business_archetype = "Growth"  # Default
+        risk_archetype = "Balanced"    # Default
+        
+        # Look for mentioned archetypes
+        response_lower = response_text.lower()
+        
+        for archetype in self.business_archetypes.keys():
+            if archetype.lower() in response_lower:
+                business_archetype = archetype
+                break
+        
+        for archetype in self.risk_archetypes.keys():
+            if archetype.lower() in response_lower:
+                risk_archetype = archetype
+                break
         
         return {
-            "dominant": dominant,
-            "secondary": "",
-            "reasoning": f"Pattern-based analysis identified {dominant} based on keyword frequency analysis."
+            'business_strategy_archetypes': {
+                'dominant': business_archetype,
+                'secondary': 'Innovation',
+                'reasoning': f'AI analysis suggests {business_archetype} strategy based on document content.'
+            },
+            'risk_strategy_archetypes': {
+                'dominant': risk_archetype,
+                'secondary': 'Conservative',
+                'reasoning': f'Risk management approach appears to be {risk_archetype} based on analysis.'
+            },
+            'analysis_type': f'ai_{client_type}_text',
+            'confidence_level': 'medium',
+            'files_analyzed': len(extracted_content) if extracted_content else 1,
+            'ai_raw_response': response_text
+        }
+    
+    def _calculate_pattern_score(self, content: str, archetype: str) -> float:
+        """Calculate pattern-based score for archetype"""
+        keywords = {
+            'growth': ['grow', 'expand', 'increase', 'scale', 'acquisition', 'market share'],
+            'innovation': ['innovate', 'technology', 'research', 'development', 'new product'],
+            'efficiency': ['efficiency', 'cost', 'optimize', 'streamline', 'productivity'],
+            'customer': ['customer', 'service', 'satisfaction', 'relationship', 'client'],
+            'diversification': ['diversify', 'expand', 'portfolio', 'market', 'opportunity'],
+            'conservative': ['stable', 'steady', 'maintain', 'preserve', 'reliable'],
+            'balanced': ['balance', 'moderate', 'prudent', 'measured', 'diversified'],
+            'aggressive': ['aggressive', 'bold', 'ambitious', 'rapid', 'accelerate'],
+            'adaptive': ['adapt', 'flexible', 'responsive', 'agile', 'dynamic'],
+            'compliance': ['compliance', 'regulatory', 'governance', 'policy', 'standards']
+        }
+        
+        archetype_keywords = keywords.get(archetype, [])
+        score = sum(content.count(keyword) for keyword in archetype_keywords)
+        
+        # Normalize by content length
+        return score / max(len(content.split()), 1) * 1000
+    
+    def _get_secondary(self, scores: Dict[str, float], primary: str) -> str:
+        """Get secondary archetype"""
+        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        for archetype, score in sorted_scores:
+            if archetype != primary:
+                return archetype
+        return list(scores.keys())[0]
+    
+    def _get_default_analysis(self) -> Dict[str, Any]:
+        """Get default analysis when all else fails"""
+        return {
+            'business_strategy_archetypes': {
+                'dominant': 'Growth',
+                'secondary': 'Innovation',
+                'reasoning': 'Default analysis - insufficient data for detailed classification'
+            },
+            'risk_strategy_archetypes': {
+                'dominant': 'Balanced',
+                'secondary': 'Conservative',
+                'reasoning': 'Default risk assessment - balanced approach assumed'
+            },
+            'analysis_type': 'default',
+            'confidence_level': 'low',
+            'files_analyzed': 0
         }
 
-# Legacy compatibility
-def analyze_company_archetypes(content: str, company_name: str, company_number: str) -> Dict[str, Any]:
-    """Legacy compatibility function"""
+if __name__ == "__main__":
+    # Test the AI analyzer
+    print("Testing AI Archetype Analyzer...")
+    
     analyzer = AIArchetypeAnalyzer()
-    return analyzer.analyze_archetypes(content, company_name, company_number)
-
-# Enhanced multi-file function
-def analyze_company_archetypes_multi_file(content: str, company_name: str, company_number: str, 
-                                        extracted_content: List[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Enhanced multi-file analysis function"""
-    analyzer = AIArchetypeAnalyzer()
-    return analyzer.analyze_archetypes(content, company_name, company_number, extracted_content)
+    
+    # Test with sample content
+    sample_content = """
+    The company is focused on growth and expansion into new markets.
+    We are investing heavily in innovation and technology development.
+    Risk management is balanced with growth objectives.
+    """
+    
+    result = analyzer.analyze_archetypes(sample_content, "Test Company", "12345678")
+    
+    print("Analysis Results:")
+    print(json.dumps(result, indent=2))
+    
+    print("AI Analyzer test completed.")
