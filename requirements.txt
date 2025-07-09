@@ -23,8 +23,9 @@ numpy==1.24.4
 # AI/ML libraries - using older stable version to avoid proxy issues
 openai==0.28.1
 
-# Database support (SQLite only - built into Python)
+# Database support
 sqlalchemy==2.0.23
+pymysql>=1.0.2
 
 # System monitoring
 psutil==5.9.6
