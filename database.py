@@ -1,448 +1,421 @@
 #!/usr/bin/env python3
 """
-Database integration for storing and retrieving analysis results
-Add this as database.py in your project root
+Database module for Strategic Analysis API
+Handles storage and retrieval of analysis results
 """
 
-import mysql.connector
-from mysql.connector import Error
+import os
 import json
 import logging
+import sqlite3
 from datetime import datetime
-from typing import Dict, List, Optional
-import os
-from contextlib import contextmanager
+from typing import List, Dict, Any, Optional
+import threading
 
 logger = logging.getLogger(__name__)
 
-# DEBUG: Log environment variables immediately when module loads
-logger.info("=== DATABASE MODULE LOADING DEBUG ===")
-logger.info(f"DB_HOST from env: {os.getenv('DB_HOST')}")
-logger.info(f"DB_NAME from env: {os.getenv('DB_NAME')}")
-logger.info(f"DB_USER from env: {os.getenv('DB_USER')}")
-logger.info(f"DB_PASSWORD set: {'YES' if os.getenv('DB_PASSWORD') else 'NO'}")
-logger.info(f"DB_PORT from env: {os.getenv('DB_PORT', 3306)}")
-logger.info("=== END MODULE LOADING DEBUG ===")
-
-# Database configuration
-DB_CONFIG = {
-    'host': os.getenv('DB_HOST'),
-    'database': os.getenv('DB_NAME'),
-    'user': os.getenv('DB_USER'),
-    'password': os.getenv('DB_PASSWORD'),
-    'port': int(os.getenv('DB_PORT', 3306)),
-    'charset': 'utf8mb4',
-    'use_unicode': True,
-    'autocommit': True
-}
-
 class AnalysisDatabase:
-    """Handles database operations for analysis results"""
+    """Database handler for analysis results using SQLite"""
     
-    def __init__(self):
-        """Initialize database connection"""
-        self.config = DB_CONFIG
+    def __init__(self, db_path: Optional[str] = None):
+        """
+        Initialize database connection
         
-        # Additional debug for the final config
-        logger.info("=== DATABASE CONFIG DEBUG ===")
-        logger.info(f"Final config host: {self.config['host']}")
-        logger.info(f"Final config user: {self.config['user']}")
-        logger.info(f"Final config database: {self.config['database']}")
-        logger.info("=== END CONFIG DEBUG ===")
+        Args:
+            db_path: Path to SQLite database file
+        """
+        # Always use SQLite to avoid MySQL dependency issues
+        self.db_path = db_path or os.environ.get('DATABASE_URL', 'analysis_database.db')
         
-        logger.info("Database configuration initialized")
+        # Clean up database URL if it contains SQLite prefix
+        if self.db_path.startswith('sqlite:///'):
+            self.db_path = self.db_path.replace('sqlite:///', '')
+        elif self.db_path.startswith('mysql://') or self.db_path.startswith('postgresql://'):
+            # Fallback to SQLite if other database URLs are provided but not available
+            logger.warning("Non-SQLite database URL detected, falling back to SQLite")
+            self.db_path = 'analysis_database.db'
         
-    @contextmanager
-    def get_connection(self):
-        """Context manager for database connections"""
-        connection = None
+        self.lock = threading.Lock()
+        
         try:
-            connection = mysql.connector.connect(**self.config)
-            logger.debug("Database connection established")
-            yield connection
-        except Error as e:
-            logger.error(f"Database connection error: {e}")
+            self._create_tables()
+            logger.info(f"✅ Database initialized: {self.db_path}")
+        except Exception as e:
+            logger.error(f"❌ Database initialization failed: {e}")
             raise
-        finally:
-            if connection and connection.is_connected():
-                connection.close()
-                logger.debug("Database connection closed")
     
-    def test_connection(self):
+    def _get_connection(self):
+        """Get database connection"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row  # Enable column access by name
+        return conn
+    
+    def _create_tables(self):
+        """Create necessary database tables"""
+        try:
+            with self._get_connection() as conn:
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS analyses (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        company_number TEXT NOT NULL,
+                        company_name TEXT,
+                        analysis_date TEXT NOT NULL,
+                        years_analyzed TEXT,  -- JSON array
+                        files_processed INTEGER DEFAULT 0,
+                        business_strategy_dominant TEXT,
+                        business_strategy_secondary TEXT,
+                        business_strategy_reasoning TEXT,
+                        risk_strategy_dominant TEXT,
+                        risk_strategy_secondary TEXT,
+                        risk_strategy_reasoning TEXT,
+                        analysis_type TEXT DEFAULT 'unknown',
+                        confidence_level TEXT DEFAULT 'medium',
+                        status TEXT DEFAULT 'completed',
+                        raw_response TEXT,  -- Full JSON response
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
+                
+                # Create indexes for better performance
+                conn.execute('CREATE INDEX IF NOT EXISTS idx_company_number ON analyses(company_number)')
+                conn.execute('CREATE INDEX IF NOT EXISTS idx_analysis_date ON analyses(analysis_date)')
+                conn.execute('CREATE INDEX IF NOT EXISTS idx_company_name ON analyses(company_name)')
+                
+                conn.commit()
+                logger.info("Database tables created successfully")
+                
+        except Exception as e:
+            logger.error(f"Error creating database tables: {e}")
+            raise
+    
+    def test_connection(self) -> bool:
         """Test database connection"""
         try:
-            with self.get_connection() as connection:
-                cursor = connection.cursor()
-                cursor.execute("SELECT 1")
-                result = cursor.fetchone()
-                logger.info("✅ Database connection test successful")
+            with self._get_connection() as conn:
+                conn.execute('SELECT 1')
                 return True
         except Exception as e:
-            logger.error(f"❌ Database connection test failed: {e}")
+            logger.error(f"Database connection test failed: {e}")
             return False
     
-    def store_analysis_result(self, analysis_data: Dict) -> int:
+    def store_analysis_result(self, analysis_data: Dict[str, Any]) -> int:
         """
         Store analysis result in database
         
         Args:
-            analysis_data: Dictionary containing analysis results
+            analysis_data: Analysis result dictionary
             
         Returns:
-            int: ID of the stored record
+            int: ID of stored record
         """
-        try:
-            with self.get_connection() as connection:
-                cursor = connection.cursor()
+        with self.lock:
+            try:
+                # Extract data from analysis_data
+                company_number = analysis_data.get('company_number', '')
+                company_name = analysis_data.get('company_name', '')
+                analysis_date = analysis_data.get('analysis_date', datetime.now().isoformat())
+                years_analyzed = json.dumps(analysis_data.get('years_analyzed', []))
+                files_processed = analysis_data.get('files_processed', 0)
                 
-                # Prepare the data
-                insert_query = """
-                INSERT INTO analysis_results (
-                    company_number, company_name, years_analyzed, files_processed,
-                    business_strategy_dominant, business_strategy_reasoning,
-                    risk_strategy_dominant, risk_strategy_reasoning,
-                    status, raw_response
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """
+                # Extract business strategy
+                business_strategy = analysis_data.get('business_strategy', {})
+                business_strategy_dominant = business_strategy.get('dominant', '')
+                business_strategy_secondary = business_strategy.get('secondary', '')
+                business_strategy_reasoning = business_strategy.get('reasoning', '')
                 
-                # Handle JSON serialization for older MySQL versions
-                years_json = json.dumps(analysis_data.get('years_analyzed', []))
-                raw_json = json.dumps(analysis_data)
+                # Extract risk strategy
+                risk_strategy = analysis_data.get('risk_strategy', {})
+                risk_strategy_dominant = risk_strategy.get('dominant', '')
+                risk_strategy_secondary = risk_strategy.get('secondary', '')
+                risk_strategy_reasoning = risk_strategy.get('reasoning', '')
                 
-                values = (
-                    analysis_data.get('company_number'),
-                    analysis_data.get('company_name'),
-                    years_json,
-                    analysis_data.get('files_processed', 0),
-                    analysis_data.get('business_strategy', {}).get('dominant'),
-                    analysis_data.get('business_strategy', {}).get('reasoning'),
-                    analysis_data.get('risk_strategy', {}).get('dominant'),
-                    analysis_data.get('risk_strategy', {}).get('reasoning'),
-                    'completed' if analysis_data.get('success') else 'failed',
-                    raw_json
-                )
+                analysis_type = analysis_data.get('analysis_type', 'unknown')
+                confidence_level = analysis_data.get('confidence_level', 'medium')
+                status = analysis_data.get('status', 'completed')
+                raw_response = json.dumps(analysis_data)
                 
-                cursor.execute(insert_query, values)
-                record_id = cursor.lastrowid
-                
-                # Store in history table as well
-                self._store_analysis_history(cursor, analysis_data, record_id)
-                
-                logger.info(f"Stored analysis result with ID: {record_id}")
-                return record_id
-                
-        except Error as e:
-            logger.error(f"Error storing analysis result: {e}")
-            raise
+                with self._get_connection() as conn:
+                    cursor = conn.execute('''
+                        INSERT INTO analyses (
+                            company_number, company_name, analysis_date, years_analyzed,
+                            files_processed, business_strategy_dominant, business_strategy_secondary,
+                            business_strategy_reasoning, risk_strategy_dominant, risk_strategy_secondary,
+                            risk_strategy_reasoning, analysis_type, confidence_level, status, raw_response
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        company_number, company_name, analysis_date, years_analyzed,
+                        files_processed, business_strategy_dominant, business_strategy_secondary,
+                        business_strategy_reasoning, risk_strategy_dominant, risk_strategy_secondary,
+                        risk_strategy_reasoning, analysis_type, confidence_level, status, raw_response
+                    ))
+                    
+                    record_id = cursor.lastrowid
+                    conn.commit()
+                    
+                    logger.info(f"Analysis stored successfully with ID: {record_id}")
+                    return record_id
+                    
+            except Exception as e:
+                logger.error(f"Error storing analysis result: {e}")
+                raise
     
-    def _store_analysis_history(self, cursor, analysis_data: Dict, analysis_id: int):
-        """Store analysis in history table"""
-        try:
-            history_query = """
-            INSERT INTO analysis_history (
-                company_number, analysis_id, years_analyzed,
-                business_strategy, risk_strategy
-            ) VALUES (%s, %s, %s, %s, %s)
-            """
-            
-            years_json = json.dumps(analysis_data.get('years_analyzed', []))
-            
-            history_values = (
-                analysis_data.get('company_number'),
-                analysis_id,
-                years_json,
-                analysis_data.get('business_strategy', {}).get('dominant'),
-                analysis_data.get('risk_strategy', {}).get('dominant')
-            )
-            
-            cursor.execute(history_query, history_values)
-            logger.debug("Analysis history stored successfully")
-            
-        except Error as e:
-            logger.error(f"Error storing analysis history: {e}")
-            # Don't raise - history is optional
-    
-    def get_analysis_by_company(self, company_number: str, limit: int = 10) -> List[Dict]:
+    def get_analysis_by_company(self, company_number: str) -> List[Dict[str, Any]]:
         """
-        Retrieve analysis results for a company
+        Get all analyses for a company
         
         Args:
-            company_number: Company registration number
-            limit: Maximum number of results to return
+            company_number: Company number
             
         Returns:
-            List of analysis results
+            List of analysis records
         """
         try:
-            with self.get_connection() as connection:
-                cursor = connection.cursor(dictionary=True)
+            with self._get_connection() as conn:
+                rows = conn.execute('''
+                    SELECT * FROM analyses 
+                    WHERE company_number = ? 
+                    ORDER BY analysis_date DESC
+                ''', (company_number,)).fetchall()
                 
-                query = """
-                SELECT * FROM analysis_results 
-                WHERE company_number = %s 
-                ORDER BY analysis_date DESC 
-                LIMIT %s
-                """
+                return [dict(row) for row in rows]
                 
-                cursor.execute(query, (company_number, limit))
-                results = cursor.fetchall()
-                
-                # Parse JSON fields
-                for result in results:
-                    if result['years_analyzed']:
-                        try:
-                            result['years_analyzed'] = json.loads(result['years_analyzed'])
-                        except:
-                            result['years_analyzed'] = []
-                    if result['raw_response']:
-                        try:
-                            result['raw_response'] = json.loads(result['raw_response'])
-                        except:
-                            result['raw_response'] = {}
-                
-                logger.info(f"Retrieved {len(results)} analysis results for company {company_number}")
-                return results
-                
-        except Error as e:
-            logger.error(f"Error retrieving analysis results: {e}")
+        except Exception as e:
+            logger.error(f"Error getting analyses for company {company_number}: {e}")
             return []
     
-    def get_recent_analyses(self, limit: int = 20) -> List[Dict]:
-        """Get most recent analyses across all companies"""
+    def get_recent_analyses(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        Get recent analyses
+        
+        Args:
+            limit: Maximum number of records to return
+            
+        Returns:
+            List of recent analysis records
+        """
         try:
-            with self.get_connection() as connection:
-                cursor = connection.cursor(dictionary=True)
+            with self._get_connection() as conn:
+                rows = conn.execute('''
+                    SELECT * FROM analyses 
+                    ORDER BY created_at DESC 
+                    LIMIT ?
+                ''', (limit,)).fetchall()
                 
-                query = """
-                SELECT company_number, company_name, analysis_date,
-                       business_strategy_dominant, risk_strategy_dominant,
-                       files_processed
-                FROM analysis_results 
-                WHERE status = 'completed'
-                ORDER BY analysis_date DESC 
-                LIMIT %s
-                """
+                return [dict(row) for row in rows]
                 
-                cursor.execute(query, (limit,))
-                results = cursor.fetchall()
-                
-                logger.info(f"Retrieved {len(results)} recent analyses")
-                return results
-                
-        except Error as e:
-            logger.error(f"Error retrieving recent analyses: {e}")
+        except Exception as e:
+            logger.error(f"Error getting recent analyses: {e}")
             return []
     
-    def search_companies(self, search_term: str, limit: int = 10) -> List[Dict]:
+    def search_companies(self, search_term: str) -> List[Dict[str, Any]]:
         """
         Search companies by name or number
         
         Args:
-            search_term: Company name or number to search for
-            limit: Maximum results to return
+            search_term: Search term
             
         Returns:
-            List of matching companies with their latest analysis
+            List of matching companies
         """
         try:
-            with self.get_connection() as connection:
-                cursor = connection.cursor(dictionary=True)
+            search_pattern = f"%{search_term}%"
+            
+            with self._get_connection() as conn:
+                rows = conn.execute('''
+                    SELECT DISTINCT company_number, company_name, 
+                           COUNT(*) as analysis_count,
+                           MAX(analysis_date) as latest_analysis
+                    FROM analyses 
+                    WHERE company_name LIKE ? OR company_number LIKE ?
+                    GROUP BY company_number, company_name
+                    ORDER BY latest_analysis DESC
+                ''', (search_pattern, search_pattern)).fetchall()
                 
-                query = """
-                SELECT DISTINCT company_number, company_name,
-                       MAX(analysis_date) as latest_analysis,
-                       COUNT(*) as analysis_count
-                FROM analysis_results 
-                WHERE company_name LIKE %s OR company_number LIKE %s
-                GROUP BY company_number, company_name
-                ORDER BY latest_analysis DESC
-                LIMIT %s
-                """
+                return [dict(row) for row in rows]
                 
-                search_pattern = f"%{search_term}%"
-                cursor.execute(query, (search_pattern, search_pattern, limit))
-                results = cursor.fetchall()
-                
-                logger.info(f"Found {len(results)} companies matching '{search_term}'")
-                return results
-                
-        except Error as e:
+        except Exception as e:
             logger.error(f"Error searching companies: {e}")
             return []
     
-    def delete_analysis_by_id(self, analysis_id: int, company_number: str = None) -> bool:
+    def delete_analysis_by_id(self, analysis_id: int, company_number: str) -> bool:
         """
-        Delete a specific analysis by ID
+        Delete a specific analysis
         
         Args:
-            analysis_id: ID of the analysis to delete
-            company_number: Optional company number for additional validation
+            analysis_id: Analysis ID
+            company_number: Company number for safety check
             
         Returns:
-            bool: True if deletion was successful, False otherwise
+            bool: True if deleted successfully
         """
-        try:
-            with self.get_connection() as connection:
-                cursor = connection.cursor()
-                
-                # Optional: Verify the analysis belongs to the company
-                if company_number:
-                    verify_query = "SELECT id FROM analysis_results WHERE id = %s AND company_number = %s"
-                    cursor.execute(verify_query, (analysis_id, company_number))
-                    if not cursor.fetchone():
-                        logger.warning(f"Analysis {analysis_id} not found for company {company_number}")
-                        return False
-                
-                # Delete from analysis_history table first (foreign key constraint)
-                history_delete_query = "DELETE FROM analysis_history WHERE analysis_id = %s"
-                cursor.execute(history_delete_query, (analysis_id,))
-                history_rows = cursor.rowcount
-                logger.info(f"Deleted {history_rows} history records for analysis {analysis_id}")
-                
-                # Delete from main analysis_results table
-                main_delete_query = "DELETE FROM analysis_results WHERE id = %s"
-                cursor.execute(main_delete_query, (analysis_id,))
-                main_rows = cursor.rowcount
-                
-                if main_rows > 0:
-                    logger.info(f"Successfully deleted analysis {analysis_id}")
-                    return True
-                else:
-                    logger.warning(f"No analysis found with ID {analysis_id}")
-                    return False
+        with self.lock:
+            try:
+                with self._get_connection() as conn:
+                    cursor = conn.execute('''
+                        DELETE FROM analyses 
+                        WHERE id = ? AND company_number = ?
+                    ''', (analysis_id, company_number))
                     
-        except Error as e:
-            logger.error(f"Error deleting analysis {analysis_id}: {e}")
-            return False
+                    conn.commit()
+                    
+                    if cursor.rowcount > 0:
+                        logger.info(f"Deleted analysis {analysis_id} for company {company_number}")
+                        return True
+                    else:
+                        logger.warning(f"No analysis found with ID {analysis_id} for company {company_number}")
+                        return False
+                        
+            except Exception as e:
+                logger.error(f"Error deleting analysis {analysis_id}: {e}")
+                return False
     
     def cleanup_invalid_analyses(self, company_number: str) -> int:
         """
-        Remove all invalid analysis entries for a company
+        Clean up invalid analyses for a company
+        CONSERVATIVE: Only removes analyses with multiple specific issues
         
         Args:
-            company_number: Company registration number
+            company_number: Company number
             
         Returns:
             int: Number of analyses deleted
         """
-        try:
-            with self.get_connection() as connection:
-                cursor = connection.cursor(dictionary=True)
-                
+        with self.lock:
+            try:
                 # Get all analyses for the company
-                query = "SELECT * FROM analysis_results WHERE company_number = %s"
-                cursor.execute(query, (company_number,))
-                analyses = cursor.fetchall()
+                analyses = self.get_analysis_by_company(company_number)
                 
-                deleted_count = 0
+                ids_to_delete = []
                 
                 for analysis in analyses:
-                    is_invalid = False
-                    reasons = []
+                    issues = []
                     
-                    # Parse raw_response if it's a string
-                    raw_response = analysis.get('raw_response')
-                    if isinstance(raw_response, str):
-                        try:
-                            raw_response = json.loads(raw_response)
-                        except:
-                            raw_response = {}
-                    
-                    # VERY SPECIFIC CHECK - Only delete the HSBC analysis
+                    # Check for specific issues
                     company_name = analysis.get('company_name', '')
                     if 'HSBC' in company_name and company_number == '02613335':
-                        is_invalid = True
-                        reasons.append("Wrong company name (HSBC for Together Personal Finance)")
+                        issues.append("wrong_company")
                     
-                    # Only check for extremely generic reasoning (the exact test data)
                     business_reasoning = analysis.get('business_strategy_reasoning', '')
                     if business_reasoning == 'The company demonstrates strong growth-oriented strategies with focus on market expansion and innovation.':
-                        is_invalid = True
-                        reasons.append("Exact generic business reasoning match")
+                        issues.append("generic_business_reasoning")
                     
                     risk_reasoning = analysis.get('risk_strategy_reasoning', '')
                     if risk_reasoning == 'Conservative risk management approach with emphasis on regulatory compliance and stable operations.':
-                        is_invalid = True
-                        reasons.append("Exact generic risk reasoning match")
+                        issues.append("generic_risk_reasoning")
                     
-                    # Check for the specific incomplete raw_response pattern
-                    if raw_response and isinstance(raw_response, dict):
-                        if (raw_response.get('analysis_complete') == True and 
-                            raw_response.get('success') == True and 
-                            len(raw_response) == 2):  # Only has these 2 keys
-                            is_invalid = True
-                            reasons.append("Incomplete raw_response (only analysis_complete and success)")
-                    
-                    # Additional safety check - only delete if multiple red flags
-                    if len(reasons) >= 2:  # Must have at least 2 problems to be deleted
-                        logger.info(f"Deleting invalid analysis ID {analysis['id']}: {reasons}")
-                        if self.delete_analysis_by_id(analysis['id'], company_number):
-                            deleted_count += 1
-                    else:
-                        logger.info(f"Keeping analysis ID {analysis['id']} - only {len(reasons)} issues: {reasons}")
+                    # Only delete if multiple issues (VERY CONSERVATIVE)
+                    if len(issues) >= 2:
+                        ids_to_delete.append(analysis['id'])
                 
-                logger.info(f"Cleanup completed: deleted {deleted_count} invalid analyses for company {company_number}")
+                # Delete identified analyses
+                deleted_count = 0
+                if ids_to_delete:
+                    with self._get_connection() as conn:
+                        for analysis_id in ids_to_delete:
+                            cursor = conn.execute('''
+                                DELETE FROM analyses 
+                                WHERE id = ? AND company_number = ?
+                            ''', (analysis_id, company_number))
+                            
+                            if cursor.rowcount > 0:
+                                deleted_count += 1
+                        
+                        conn.commit()
+                
+                logger.info(f"Cleaned up {deleted_count} invalid analyses for company {company_number}")
                 return deleted_count
                 
-        except Error as e:
-            logger.error(f"Error during cleanup for company {company_number}: {e}")
-            return 0
+            except Exception as e:
+                logger.error(f"Error cleaning up analyses for company {company_number}: {e}")
+                return 0
     
-    def get_analysis_statistics(self) -> Dict:
-        """Get database statistics"""
+    def get_analysis_statistics(self) -> Dict[str, Any]:
+        """
+        Get database statistics
+        
+        Returns:
+            Dictionary with statistics
+        """
         try:
-            with self.get_connection() as connection:
-                cursor = connection.cursor(dictionary=True)
-                
-                stats = {}
-                
+            with self._get_connection() as conn:
                 # Total analyses
-                cursor.execute("SELECT COUNT(*) as total FROM analysis_results")
-                stats['total_analyses'] = cursor.fetchone()['total']
-                
-                # Completed analyses
-                cursor.execute("SELECT COUNT(*) as completed FROM analysis_results WHERE status = 'completed'")
-                stats['completed_analyses'] = cursor.fetchone()['completed']
+                total_count = conn.execute('SELECT COUNT(*) FROM analyses').fetchone()[0]
                 
                 # Unique companies
-                cursor.execute("SELECT COUNT(DISTINCT company_number) as companies FROM analysis_results")
-                stats['unique_companies'] = cursor.fetchone()['companies']
+                company_count = conn.execute('SELECT COUNT(DISTINCT company_number) FROM analyses').fetchone()[0]
                 
-                # Recent analyses (last 7 days)
-                cursor.execute("""
-                    SELECT COUNT(*) as recent 
-                    FROM analysis_results 
-                    WHERE analysis_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-                """)
-                stats['recent_analyses'] = cursor.fetchone()['recent']
+                # Recent activity (last 30 days)
+                recent_count = conn.execute('''
+                    SELECT COUNT(*) FROM analyses 
+                    WHERE created_at >= datetime('now', '-30 days')
+                ''').fetchone()[0]
                 
-                logger.info(f"Database statistics: {stats}")
-                return stats
+                # Analysis types
+                type_stats = conn.execute('''
+                    SELECT analysis_type, COUNT(*) 
+                    FROM analyses 
+                    GROUP BY analysis_type
+                ''').fetchall()
                 
-        except Error as e:
+                return {
+                    'total_analyses': total_count,
+                    'unique_companies': company_count,
+                    'recent_analyses_30_days': recent_count,
+                    'analysis_types': dict(type_stats),
+                    'database_path': self.db_path
+                }
+                
+        except Exception as e:
             logger.error(f"Error getting database statistics: {e}")
-            return {}
+            return {'error': str(e)}
 
-
-# Test the database connection
 if __name__ == "__main__":
-    db = AnalysisDatabase()
-    success = db.test_connection()
-    if success:
-        print("✅ Database connection successful!")
-        
-        # Show statistics
-        stats = db.get_analysis_statistics()
-        if stats:
-            print(f"📊 Database Statistics:")
-            print(f"   Total analyses: {stats.get('total_analyses', 0)}")
-            print(f"   Completed: {stats.get('completed_analyses', 0)}")
-            print(f"   Unique companies: {stats.get('unique_companies', 0)}")
-            print(f"   Recent (7 days): {stats.get('recent_analyses', 0)}")
+    # Test the database
+    print("Testing AnalysisDatabase...")
+    
+    db = AnalysisDatabase('test_analysis.db')
+    
+    # Test connection
+    if db.test_connection():
+        print("✅ Database connection successful")
     else:
-        print("❌ Database connection failed!")
-        print("Check your environment variables:")
-        print(f"DB_HOST: {os.getenv('DB_HOST')}")
-        print(f"DB_NAME: {os.getenv('DB_NAME')}")
-        print(f"DB_USER: {os.getenv('DB_USER')}")
-        print(f"DB_PASSWORD: {'*' * len(os.getenv('DB_PASSWORD', '')) if os.getenv('DB_PASSWORD') else 'Not set'}")
+        print("❌ Database connection failed")
+    
+    # Test storing a sample analysis
+    sample_analysis = {
+        'company_number': '12345678',
+        'company_name': 'Test Company Ltd',
+        'analysis_date': datetime.now().isoformat(),
+        'years_analyzed': [2023, 2024],
+        'files_processed': 2,
+        'business_strategy': {
+            'dominant': 'Growth',
+            'secondary': 'Innovation',
+            'reasoning': 'Test reasoning'
+        },
+        'risk_strategy': {
+            'dominant': 'Conservative',
+            'secondary': 'Balanced',
+            'reasoning': 'Test risk reasoning'
+        },
+        'analysis_type': 'test',
+        'status': 'completed'
+    }
+    
+    try:
+        record_id = db.store_analysis_result(sample_analysis)
+        print(f"✅ Sample analysis stored with ID: {record_id}")
+        
+        # Test retrieval
+        results = db.get_analysis_by_company('12345678')
+        print(f"✅ Retrieved {len(results)} analyses for test company")
+        
+        # Test statistics
+        stats = db.get_analysis_statistics()
+        print(f"✅ Database statistics: {stats}")
+        
+    except Exception as e:
+        print(f"❌ Database test failed: {e}")
+    
+    print("Database test completed.")
