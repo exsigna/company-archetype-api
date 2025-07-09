@@ -135,14 +135,17 @@ def extract_archetype_from_analysis(result):
     risk_strategy = 'Not Available'
     
     try:
-        # Try to get from direct fields first
+        # Try to get from direct fields first (most common case)
         business_strategy = result.get('business_strategy_dominant') or 'Not Available'
         risk_strategy = result.get('risk_strategy_dominant') or 'Not Available'
         
-        # If not available, try to extract from raw_response
-        if (business_strategy == 'Not Available' or risk_strategy == 'Not Available') and result.get('raw_response'):
-            raw_response = result.get('raw_response')
-            
+        # If we got valid values that aren't 'Not Available', return them
+        if business_strategy != 'Not Available' and risk_strategy != 'Not Available':
+            return business_strategy, risk_strategy
+        
+        # If not available in direct fields, try to extract from raw_response
+        raw_response = result.get('raw_response')
+        if raw_response:
             # Parse raw_response if it's a string
             if isinstance(raw_response, str):
                 try:
@@ -152,23 +155,27 @@ def extract_archetype_from_analysis(result):
             else:
                 raw_data = raw_response or {}
             
-            # Extract business strategy archetype
+            # Extract business strategy archetype with multiple fallback paths
             if business_strategy == 'Not Available':
                 business_strategy = (
                     raw_data.get('business_strategy_analysis', {}).get('dominant_archetype') or
+                    raw_data.get('business_strategy_analysis', {}).get('dominant') or
                     raw_data.get('business_strategy', {}).get('dominant_archetype') or
                     raw_data.get('business_strategy', {}).get('dominant') or
                     raw_data.get('business_strategy_dominant') or
+                    raw_data.get('board_analysis', {}).get('business_strategy_analysis', {}).get('dominant_archetype') or
                     'Not Available'
                 )
             
-            # Extract risk strategy archetype
+            # Extract risk strategy archetype with multiple fallback paths
             if risk_strategy == 'Not Available':
                 risk_strategy = (
                     raw_data.get('risk_strategy_analysis', {}).get('dominant_archetype') or
+                    raw_data.get('risk_strategy_analysis', {}).get('dominant') or
                     raw_data.get('risk_strategy', {}).get('dominant_archetype') or
                     raw_data.get('risk_strategy', {}).get('dominant') or
                     raw_data.get('risk_strategy_dominant') or
+                    raw_data.get('board_analysis', {}).get('risk_strategy_analysis', {}).get('dominant_archetype') or
                     'Not Available'
                 )
     
@@ -348,8 +355,13 @@ def create_app():
                 if results:
                     analysis_metadata = []
                     for result in results:
-                        # Extract archetype names from raw_response or stored fields
-                        business_strategy, risk_strategy = extract_archetype_from_analysis(result)
+                        # Extract archetype names from the result with error handling
+                        try:
+                            business_strategy, risk_strategy = extract_archetype_from_analysis(result)
+                        except Exception as e:
+                            logger.error(f"Error extracting archetypes for analysis {result.get('id')}: {e}")
+                            business_strategy = result.get('business_strategy_dominant', 'Not Available')
+                            risk_strategy = result.get('risk_strategy_dominant', 'Not Available')
                         
                         metadata = {
                             'analysis_id': result.get('id'),
@@ -358,9 +370,9 @@ def create_app():
                             'analysis_date': result.get('analysis_date'),
                             'years_analyzed': result.get('years_analyzed', []),
                             'files_processed': result.get('files_processed', 0),
-                            'business_strategy': business_strategy,  # Now extracted from raw_response
+                            'business_strategy': business_strategy,  # Extracted archetype name
                             'business_strategy_dominant': business_strategy,  # Legacy compatibility
-                            'risk_strategy': risk_strategy,  # Now extracted from raw_response
+                            'risk_strategy': risk_strategy,  # Extracted archetype name
                             'risk_strategy_dominant': risk_strategy,  # Legacy compatibility
                             'status': result.get('status'),
                             'analysis_type': result.get('analysis_type', 'unknown'),
@@ -388,8 +400,13 @@ def create_app():
                 
                 analysis_metadata = []
                 for result in detailed_analyses:
-                    # Extract archetype names from raw_response or stored fields
-                    business_strategy, risk_strategy = extract_archetype_from_analysis(result)
+                    # Extract archetype names from the result with error handling
+                    try:
+                        business_strategy, risk_strategy = extract_archetype_from_analysis(result)
+                    except Exception as e:
+                        logger.error(f"Error extracting archetypes for analysis {result.get('id')}: {e}")
+                        business_strategy = result.get('business_strategy_dominant', 'Not Available')
+                        risk_strategy = result.get('risk_strategy_dominant', 'Not Available')
                     
                     metadata = {
                         'analysis_id': result.get('id'),
@@ -398,9 +415,9 @@ def create_app():
                         'analysis_date': result.get('analysis_date'),
                         'years_analyzed': result.get('years_analyzed', []),
                         'files_processed': result.get('files_processed', 0),
-                        'business_strategy': business_strategy,  # Now extracted from raw_response
+                        'business_strategy': business_strategy,  # Extracted archetype name
                         'business_strategy_dominant': business_strategy,  # Legacy compatibility
-                        'risk_strategy': risk_strategy,  # Now extracted from raw_response
+                        'risk_strategy': risk_strategy,  # Extracted archetype name
                         'risk_strategy_dominant': risk_strategy,  # Legacy compatibility
                         'status': result.get('status'),
                         'analysis_type': result.get('analysis_type', 'unknown'),
