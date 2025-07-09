@@ -179,48 +179,85 @@ class AIArchetypeAnalyzer:
     
     def _analyze_with_fallback(self, content: str, company_name: str, company_number: str,
                              extracted_content: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
-        """Fallback pattern-based analysis"""
+        """Fallback pattern-based analysis with robust error handling"""
         try:
             # Pattern-based keyword analysis
-            content_lower = content.lower()
+            content_lower = str(content).lower() if content else ""
             
             # Business strategy analysis
             business_scores = {}
             for archetype, description in self.business_archetypes.items():
-                score = self._calculate_pattern_score(content_lower, archetype.lower())
-                business_scores[archetype] = score
+                try:
+                    score = self._calculate_pattern_score(content_lower, str(archetype))
+                    business_scores[str(archetype)] = float(score)
+                except Exception as e:
+                    logger.debug(f"Error scoring {archetype}: {e}")
+                    business_scores[str(archetype)] = 0.0
             
             # Risk strategy analysis  
             risk_scores = {}
             for archetype, description in self.risk_archetypes.items():
-                score = self._calculate_pattern_score(content_lower, archetype.lower())
-                risk_scores[archetype] = score
+                try:
+                    score = self._calculate_pattern_score(content_lower, str(archetype))
+                    risk_scores[str(archetype)] = float(score)
+                except Exception as e:
+                    logger.debug(f"Error scoring {archetype}: {e}")
+                    risk_scores[str(archetype)] = 0.0
             
-            # Find dominant strategies
-            business_dominant = max(business_scores, key=business_scores.get)
-            risk_dominant = max(risk_scores, key=risk_scores.get)
+            # Find dominant strategies safely
+            try:
+                business_dominant = max(business_scores, key=business_scores.get) if business_scores else "Disciplined Specialist Growth"
+                business_secondary = self._get_secondary(business_scores, business_dominant)
+            except Exception as e:
+                logger.error(f"Error finding business dominant: {e}")
+                business_dominant = "Disciplined Specialist Growth"
+                business_secondary = "Balance-Sheet Steward"
             
+            try:
+                risk_dominant = max(risk_scores, key=risk_scores.get) if risk_scores else "Risk-First Conservative"
+                risk_secondary = self._get_secondary(risk_scores, risk_dominant)
+            except Exception as e:
+                logger.error(f"Error finding risk dominant: {e}")
+                risk_dominant = "Risk-First Conservative"
+                risk_secondary = "Rules-Led Operator"
+            
+            # Ensure all values are strings and valid
+            business_dominant = str(business_dominant)
+            business_secondary = str(business_secondary)
+            risk_dominant = str(risk_dominant)
+            risk_secondary = str(risk_secondary)
+            
+            # Validate archetypes exist
+            if business_dominant not in self.business_archetypes:
+                business_dominant = "Disciplined Specialist Growth"
+            if business_secondary not in self.business_archetypes:
+                business_secondary = "Balance-Sheet Steward"
+            if risk_dominant not in self.risk_archetypes:
+                risk_dominant = "Risk-First Conservative"
+            if risk_secondary not in self.risk_archetypes:
+                risk_secondary = "Rules-Led Operator"
+
             return {
                 'business_strategy_archetypes': {
                     'dominant': business_dominant,
-                    'secondary': self._get_secondary(business_scores, business_dominant),
+                    'secondary': business_secondary,
                     'scores': business_scores,
                     'reasoning': f"Pattern analysis indicates {business_dominant} orientation based on keyword frequency and context.",
-                    'definition': self.business_archetypes.get(business_dominant, "Definition not available"),
-                    'secondary_definition': self.business_archetypes.get(self._get_secondary(business_scores, business_dominant), "Definition not available")
+                    'definition': self.business_archetypes[business_dominant],
+                    'secondary_definition': self.business_archetypes[business_secondary]
                 },
                 'risk_strategy_archetypes': {
                     'dominant': risk_dominant,
-                    'secondary': self._get_secondary(risk_scores, risk_dominant),
+                    'secondary': risk_secondary,
                     'scores': risk_scores,
                     'reasoning': f"Analysis suggests {risk_dominant} risk management approach based on content patterns.",
-                    'definition': self.risk_archetypes.get(risk_dominant, "Definition not available"),
-                    'secondary_definition': self.risk_archetypes.get(self._get_secondary(risk_scores, risk_dominant), "Definition not available")
+                    'definition': self.risk_archetypes[risk_dominant],
+                    'secondary_definition': self.risk_archetypes[risk_secondary]
                 },
                 'analysis_type': 'fallback_pattern',
                 'confidence_level': 'medium',
                 'files_analyzed': len(extracted_content) if extracted_content else 1,
-                'content_length': len(content),
+                'content_length': len(content) if content else 0,
                 'archetype_definitions': {
                     'business_archetypes': self.business_archetypes,
                     'risk_archetypes': self.risk_archetypes
@@ -255,48 +292,72 @@ Format your response as JSON with keys: business_primary, business_reasoning, ri
 """
     
     def _parse_ai_response(self, response_text: str, client_type: str, extracted_content: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
-        """Parse AI response into structured format"""
+        """Parse AI response into structured format with robust error handling"""
         try:
+            # Clean the response text first
+            cleaned_response = str(response_text).strip()
+            
             # Try to extract JSON from response
             import re
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', cleaned_response, re.DOTALL)
             
             if json_match:
-                ai_data = json.loads(json_match.group())
-                
-                # Safely get values with fallbacks
-                business_primary = ai_data.get('business_primary', 'Disciplined Specialist Growth')
-                business_secondary = ai_data.get('business_secondary', 'Balance-Sheet Steward')
-                risk_primary = ai_data.get('risk_primary', 'Risk-First Conservative')
-                risk_secondary = ai_data.get('risk_secondary', 'Rules-Led Operator')
-                
-                return {
-                    'business_strategy_archetypes': {
-                        'dominant': business_primary,
-                        'secondary': business_secondary,
-                        'reasoning': ai_data.get('business_reasoning', 'AI-generated analysis'),
-                        'definition': self.business_archetypes.get(business_primary, "Definition not available"),
-                        'secondary_definition': self.business_archetypes.get(business_secondary, "Definition not available")
-                    },
-                    'risk_strategy_archetypes': {
-                        'dominant': risk_primary,
-                        'secondary': risk_secondary, 
-                        'reasoning': ai_data.get('risk_reasoning', 'AI-generated analysis'),
-                        'definition': self.risk_archetypes.get(risk_primary, "Definition not available"),
-                        'secondary_definition': self.risk_archetypes.get(risk_secondary, "Definition not available")
-                    },
-                    'analysis_type': f'ai_{client_type}',
-                    'confidence_level': ai_data.get('confidence', 'medium'),
-                    'files_analyzed': len(extracted_content) if extracted_content else 1,
-                    'ai_raw_response': response_text[:500],  # Truncate to avoid issues
-                    'archetype_definitions': {
-                        'business_archetypes': self.business_archetypes,
-                        'risk_archetypes': self.risk_archetypes
+                try:
+                    ai_data = json.loads(json_match.group())
+                    
+                    # Ensure ai_data is a dictionary
+                    if not isinstance(ai_data, dict):
+                        logger.warning("AI response is not a dictionary, using fallback")
+                        return self._parse_text_response(cleaned_response, client_type, extracted_content)
+                    
+                    # Safely extract values with proper type checking
+                    business_primary = str(ai_data.get('business_primary', 'Disciplined Specialist Growth'))
+                    business_secondary = str(ai_data.get('business_secondary', 'Balance-Sheet Steward'))
+                    risk_primary = str(ai_data.get('risk_primary', 'Risk-First Conservative'))
+                    risk_secondary = str(ai_data.get('risk_secondary', 'Rules-Led Operator'))
+                    
+                    # Ensure these are valid archetype names
+                    if business_primary not in self.business_archetypes:
+                        business_primary = 'Disciplined Specialist Growth'
+                    if business_secondary not in self.business_archetypes:
+                        business_secondary = 'Balance-Sheet Steward'
+                    if risk_primary not in self.risk_archetypes:
+                        risk_primary = 'Risk-First Conservative'
+                    if risk_secondary not in self.risk_archetypes:
+                        risk_secondary = 'Rules-Led Operator'
+                    
+                    return {
+                        'business_strategy_archetypes': {
+                            'dominant': business_primary,
+                            'secondary': business_secondary,
+                            'reasoning': str(ai_data.get('business_reasoning', 'AI-generated analysis based on document content')),
+                            'definition': self.business_archetypes[business_primary],
+                            'secondary_definition': self.business_archetypes[business_secondary]
+                        },
+                        'risk_strategy_archetypes': {
+                            'dominant': risk_primary,
+                            'secondary': risk_secondary, 
+                            'reasoning': str(ai_data.get('risk_reasoning', 'AI-generated risk analysis based on document content')),
+                            'definition': self.risk_archetypes[risk_primary],
+                            'secondary_definition': self.risk_archetypes[risk_secondary]
+                        },
+                        'analysis_type': f'ai_{client_type}',
+                        'confidence_level': str(ai_data.get('confidence', 'medium')),
+                        'files_analyzed': len(extracted_content) if extracted_content else 1,
+                        'ai_raw_response': cleaned_response[:200] + '...' if len(cleaned_response) > 200 else cleaned_response,
+                        'archetype_definitions': {
+                            'business_archetypes': self.business_archetypes,
+                            'risk_archetypes': self.risk_archetypes
+                        }
                     }
-                }
+                    
+                except json.JSONDecodeError as je:
+                    logger.warning(f"JSON decode error: {je}, using text parsing")
+                    return self._parse_text_response(cleaned_response, client_type, extracted_content)
             else:
-                # Fallback parsing
-                return self._parse_text_response(response_text, client_type, extracted_content)
+                # No JSON found, use text parsing
+                logger.info("No JSON structure found in AI response, using text parsing")
+                return self._parse_text_response(cleaned_response, client_type, extracted_content)
                 
         except Exception as e:
             logger.error(f"Error parsing AI response: {e}")
@@ -416,12 +477,39 @@ Format your response as JSON with keys: business_primary, business_reasoning, ri
         return normalized_score
     
     def _get_secondary(self, scores: Dict[str, float], primary: str) -> str:
-        """Get secondary archetype"""
-        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        for archetype, score in sorted_scores:
-            if archetype != primary:
-                return archetype
-        return list(scores.keys())[0]
+        """Get secondary archetype - fixed to handle edge cases"""
+        try:
+            if not scores or not isinstance(scores, dict):
+                return list(self.business_archetypes.keys())[1] if primary != list(self.business_archetypes.keys())[0] else list(self.business_archetypes.keys())[0]
+            
+            # Convert any non-string keys to strings
+            clean_scores = {}
+            for key, value in scores.items():
+                clean_key = str(key) if key is not None else "Unknown"
+                clean_value = float(value) if isinstance(value, (int, float)) else 0.0
+                clean_scores[clean_key] = clean_value
+            
+            # Sort by score, descending
+            sorted_scores = sorted(clean_scores.items(), key=lambda x: x[1], reverse=True)
+            
+            # Find first archetype that's not the primary
+            for archetype, score in sorted_scores:
+                if str(archetype) != str(primary):
+                    return str(archetype)
+            
+            # Fallback - return first available archetype
+            all_archetypes = list(self.business_archetypes.keys()) + list(self.risk_archetypes.keys())
+            for archetype in all_archetypes:
+                if str(archetype) != str(primary):
+                    return str(archetype)
+            
+            # Ultimate fallback
+            return "Balance-Sheet Steward" if primary != "Balance-Sheet Steward" else "Disciplined Specialist Growth"
+            
+        except Exception as e:
+            logger.error(f"Error in _get_secondary: {e}")
+            # Safe fallback
+            return "Balance-Sheet Steward" if str(primary) != "Balance-Sheet Steward" else "Disciplined Specialist Growth"
     
     def _get_default_analysis(self) -> Dict[str, Any]:
         """Get default analysis when all else fails"""
