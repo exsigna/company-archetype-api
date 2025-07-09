@@ -360,7 +360,7 @@ def analyze_company():
                 'error': 'Years array is required'
             }), 400
         
-        logger.info(f"🚀 Request {request_id}: Starting ENHANCED multi-file analysis for company {company_number}, years: {years}")
+        logger.info(f"🚀 Request {request_id}: Starting analysis for company {company_number}, years: {years}")
         
         # Validate company exists
         exists, company_name = ch_client.validate_company_exists(company_number)
@@ -408,8 +408,8 @@ def analyze_company():
         logger.info(f"✅ Successfully extracted content from {len(extracted_content)} files")
         
         # Enhanced content processing and analysis
-        logger.info("🧠 Processing and analyzing content with ENHANCED multi-file support...")
-        analysis_results = process_and_analyze_content_api_enhanced(
+        logger.info("🧠 Processing and analyzing content...")
+        analysis_results = process_and_analyze_content_api(
             extracted_content, company_name, company_number
         )
         
@@ -419,9 +419,8 @@ def analyze_company():
                 'error': 'Content analysis failed'
             }), 500
         
-        # Enhanced response preparation with additional metadata
+        # Prepare response data (simplified to match original structure)
         archetype_analysis = analysis_results.get('archetype_analysis', {})
-        analysis_metadata = archetype_analysis.get('analysis_metadata', {})
         
         response_data = {
             'success': True,
@@ -429,31 +428,15 @@ def analyze_company():
             'company_name': company_name,
             'years_analyzed': years,
             'files_processed': len(extracted_content),
-            'business_strategy': make_json_serializable(archetype_analysis.get('business_strategy_archetypes', {})),
-            'risk_strategy': make_json_serializable(archetype_analysis.get('risk_strategy_archetypes', {})),
+            'business_strategy': archetype_analysis.get('business_strategy_archetypes', {}),
+            'risk_strategy': archetype_analysis.get('risk_strategy_archetypes', {}),
             'analysis_date': datetime.now().isoformat(),
-            'analysis_type': archetype_analysis.get('analysis_type', 'unknown'),
-            'analysis_metadata': {
-                'files_analyzed': analysis_metadata.get('files_analyzed', len(extracted_content)),
-                'total_content_chars': analysis_metadata.get('total_content_chars', 0),
-                'confidence_level': analysis_metadata.get('confidence_level', 'medium'),
-                'content_utilization': analysis_metadata.get('content_utilization', 'multi_file'),
-                'model_used': archetype_analysis.get('model_used', 'enhanced_analyzer')
-            },
-            'file_details': [
-                {
-                    'filename': content['filename'],
-                    'date': make_json_serializable(content['date']),  # Ensure date is serializable
-                    'content_length': len(content['content']),
-                    'extraction_method': content['metadata'].get('extraction_method', 'unknown')
-                }
-                for content in extracted_content
-            ]
+            'analysis_type': archetype_analysis.get('analysis_type', 'unknown')
         }
         
-        # Store in database with enhanced error handling (prevent retry loops)
+        # Store in database with proper JSON serialization
         try:
-            logger.info(f"💾 Request {request_id}: Attempting to store analysis results in database...")
+            logger.info(f"💾 Request {request_id}: Storing analysis results in database...")
             
             # Ensure all data is JSON serializable before storing
             serializable_response = make_json_serializable(response_data)
@@ -464,11 +447,8 @@ def analyze_company():
             
         except Exception as db_error:
             logger.error(f"❌ Request {request_id}: Database storage failed: {str(db_error)}")
-            logger.error(f"🔍 Request {request_id}: Error type: {type(db_error).__name__}")
-            
-            # Add database warning but DON'T retry to avoid multiple errors
-            response_data['database_warning'] = f'Analysis completed but database storage failed: {str(db_error)}'
-            logger.warning(f"⚠️ Request {request_id}: Continuing without database storage to prevent retry loops")
+            # Continue without failing the whole request
+            response_data['database_warning'] = 'Analysis completed but database storage had issues'
         
         # Clean up temporary files
         try:
@@ -477,7 +457,7 @@ def analyze_company():
         except Exception as cleanup_error:
             logger.warning(f"⚠️ Cleanup warning: {cleanup_error}")
         
-        logger.info(f"🎉 Request {request_id}: Enhanced multi-file analysis completed successfully for {company_number}")
+        logger.info(f"🎉 Request {request_id}: Analysis completed successfully for {company_number}")
         return jsonify(response_data)
         
     except Exception as e:
@@ -563,14 +543,10 @@ def extract_content_from_files(downloaded_files):
     
     return extracted_content
 
-def process_and_analyze_content_api_enhanced(extracted_content, company_name, company_number):
-    """
-    ENHANCED process and analyze content for API with full multi-file support
-    
-    This is the key enhancement that enables individual file analysis and synthesis
-    """
+def process_and_analyze_content_api(extracted_content, company_name, company_number):
+    """Process and analyze content for API with enhanced multi-file support"""
     try:
-        logger.info(f"🧠 Starting ENHANCED content processing for {len(extracted_content)} files")
+        logger.info(f"🧠 Starting content processing for {len(extracted_content)} files")
         
         # Process documents individually
         processed_documents = []
@@ -589,8 +565,8 @@ def process_and_analyze_content_api_enhanced(extracted_content, company_name, co
         combined_content = "\n\n".join([content_data['content'] for content_data in extracted_content])
         logger.info(f"📊 Combined content length: {len(combined_content):,} characters")
         
-        # *** ENHANCED ARCHETYPE ANALYSIS WITH INDIVIDUAL FILE DATA ***
-        logger.info("🚀 Performing ENHANCED archetype analysis with individual file support")
+        # Enhanced archetype analysis with individual file data
+        logger.info("🚀 Performing archetype analysis with multi-file support")
         
         # Ensure extracted_content dates are serializable before passing to analyzer
         serializable_extracted_content = []
@@ -610,24 +586,17 @@ def process_and_analyze_content_api_enhanced(extracted_content, company_name, co
             extracted_content=serializable_extracted_content  # Pass serializable file data
         )
         
-        logger.info("✅ Enhanced archetype analysis completed")
+        logger.info("✅ Archetype analysis completed")
         
         return {
             'processed_content': combined_analysis,
             'archetype_analysis': archetype_analysis,
-            'document_count': len(extracted_content),
-            'enhancement_status': 'multi_file_analysis_enabled'
+            'document_count': len(extracted_content)
         }
         
     except Exception as e:
-        logger.error(f"❌ Error in enhanced content processing: {e}")
+        logger.error(f"❌ Error in content processing: {e}")
         return None
-
-# Legacy function for backward compatibility
-def process_and_analyze_content_api(extracted_content, company_name, company_number):
-    """Legacy process and analyze content for API (calls enhanced version)"""
-    logger.info("🔄 Using enhanced processing pipeline for backward compatibility")
-    return process_and_analyze_content_api_enhanced(extracted_content, company_name, company_number)
 
 # Database endpoints
 @app.route('/api/analysis/history/<company_number>')
