@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Flask API for Strategic Analysis Tool with Database Integration
+Enhanced with Full Multi-File Analysis Support
 """
 
 import os
@@ -83,7 +84,14 @@ def home():
     return jsonify({
         'service': 'Strategic Analysis API',
         'status': 'running',
-        'version': '1.0.0',
+        'version': '2.0.0',  # Updated version for multi-file support
+        'features': [
+            'Multi-file analysis with individual file processing',
+            'Enhanced AI archetype classification',
+            'Intelligent content sampling (15K chars)',
+            'File-by-file synthesis and confidence scoring',
+            'Comprehensive evidence-based reasoning'
+        ],
         'endpoints': {
             'analyze': '/api/analyze',
             'years': '/api/years/<company_number>',
@@ -144,7 +152,8 @@ def lookup_company_analysis(company_identifier):
                         'files_processed': result.get('files_processed', 0),
                         'business_strategy': result.get('business_strategy_dominant'),
                         'risk_strategy': result.get('risk_strategy_dominant'),
-                        'status': result.get('status')
+                        'status': result.get('status'),
+                        'analysis_type': result.get('analysis_type', 'unknown')
                     }
                     analysis_metadata.append(metadata)
                 
@@ -179,7 +188,8 @@ def lookup_company_analysis(company_identifier):
                     'files_processed': result.get('files_processed', 0),
                     'business_strategy': result.get('business_strategy_dominant'),
                     'risk_strategy': result.get('risk_strategy_dominant'),
-                    'status': result.get('status')
+                    'status': result.get('status'),
+                    'analysis_type': result.get('analysis_type', 'unknown')
                 }
                 analysis_metadata.append(metadata)
             
@@ -298,7 +308,7 @@ def get_available_years(company_number):
 
 @app.route('/api/analyze', methods=['POST'])
 def analyze_company():
-    """Main analysis endpoint with database storage"""
+    """Enhanced main analysis endpoint with full multi-file support and database storage"""
     try:
         # Get request data
         data = request.get_json()
@@ -330,7 +340,7 @@ def analyze_company():
                 'error': 'Years array is required'
             }), 400
         
-        logger.info(f"Starting analysis for company {company_number}, years: {years}")
+        logger.info(f"🚀 Starting ENHANCED multi-file analysis for company {company_number}, years: {years}")
         
         # Validate company exists
         exists, company_name = ch_client.validate_company_exists(company_number)
@@ -340,10 +350,10 @@ def analyze_company():
                 'error': f'Company {company_number} not found'
             }), 404
         
-        logger.info(f"Company validated: {company_name}")
+        logger.info(f"✅ Company validated: {company_name}")
         
         # Download filings
-        logger.info("Downloading filings...")
+        logger.info("📥 Downloading filings...")
         max_years_needed = max(datetime.now().year - min(years) + 2, 6)
         download_results = download_company_filings(company_number, max_years_needed)
         
@@ -354,7 +364,7 @@ def analyze_company():
             }), 404
         
         # Filter files to selected years
-        logger.info(f"Filtering files to selected years: {years}")
+        logger.info(f"🔍 Filtering files to selected years: {years}")
         filtered_files = filter_files_by_years(download_results['downloaded_files'], years)
         
         if not filtered_files:
@@ -363,8 +373,10 @@ def analyze_company():
                 'error': 'No files found for the selected years'
             }), 404
         
+        logger.info(f"📋 Found {len(filtered_files)} files matching selected years")
+        
         # Extract content from PDFs
-        logger.info(f"Extracting content from {len(filtered_files)} files...")
+        logger.info(f"📄 Extracting content from {len(filtered_files)} files...")
         extracted_content = extract_content_from_files(filtered_files)
         
         if not extracted_content:
@@ -373,9 +385,11 @@ def analyze_company():
                 'error': 'No readable content could be extracted from the files'
             }), 500
         
-        # Process and analyze content
-        logger.info("Processing and analyzing content...")
-        analysis_results = process_and_analyze_content_api(
+        logger.info(f"✅ Successfully extracted content from {len(extracted_content)} files")
+        
+        # Enhanced content processing and analysis
+        logger.info("🧠 Processing and analyzing content with ENHANCED multi-file support...")
+        analysis_results = process_and_analyze_content_api_enhanced(
             extracted_content, company_name, company_number
         )
         
@@ -385,39 +399,59 @@ def analyze_company():
                 'error': 'Content analysis failed'
             }), 500
         
-        # Prepare response
+        # Enhanced response preparation with additional metadata
+        archetype_analysis = analysis_results.get('archetype_analysis', {})
+        analysis_metadata = archetype_analysis.get('analysis_metadata', {})
+        
         response_data = {
             'success': True,
             'company_number': company_number,
             'company_name': company_name,
             'years_analyzed': years,
             'files_processed': len(extracted_content),
-            'business_strategy': analysis_results['archetype_analysis'].get('business_strategy_archetypes', {}),
-            'risk_strategy': analysis_results['archetype_analysis'].get('risk_strategy_archetypes', {}),
+            'business_strategy': archetype_analysis.get('business_strategy_archetypes', {}),
+            'risk_strategy': archetype_analysis.get('risk_strategy_archetypes', {}),
             'analysis_date': datetime.now().isoformat(),
-            'analysis_type': analysis_results['archetype_analysis'].get('analysis_type', 'unknown')
+            'analysis_type': archetype_analysis.get('analysis_type', 'unknown'),
+            'analysis_metadata': {
+                'files_analyzed': analysis_metadata.get('files_analyzed', len(extracted_content)),
+                'total_content_chars': analysis_metadata.get('total_content_chars', 0),
+                'confidence_level': analysis_metadata.get('confidence_level', 'medium'),
+                'content_utilization': analysis_metadata.get('content_utilization', 'multi_file'),
+                'model_used': archetype_analysis.get('model_used', 'enhanced_analyzer')
+            },
+            'file_details': [
+                {
+                    'filename': content['filename'],
+                    'date': content['date'],
+                    'content_length': len(content['content']),
+                    'extraction_method': content['metadata'].get('extraction_method', 'unknown')
+                }
+                for content in extracted_content
+            ]
         }
         
         # Store in database
         try:
             record_id = db.store_analysis_result(response_data)
             response_data['database_id'] = record_id
-            logger.info(f"Analysis stored in database with ID: {record_id}")
+            logger.info(f"💾 Analysis stored in database with ID: {record_id}")
         except Exception as db_error:
-            logger.error(f"Database storage failed: {db_error}")
+            logger.error(f"❌ Database storage failed: {db_error}")
             # Continue without failing the whole request
         
         # Clean up temporary files
         try:
             ch_client.cleanup_temp_files()
-        except:
-            pass
+            logger.info("🧹 Temporary files cleaned up")
+        except Exception as cleanup_error:
+            logger.warning(f"⚠️ Cleanup warning: {cleanup_error}")
         
-        logger.info(f"Analysis completed successfully for {company_number}")
+        logger.info(f"🎉 Enhanced multi-file analysis completed successfully for {company_number}")
         return jsonify(response_data)
         
     except Exception as e:
-        logger.error(f"Analysis failed: {e}")
+        logger.error(f"❌ Analysis failed: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -427,10 +461,10 @@ def download_company_filings(company_number, max_years):
     """Download company filings using existing method"""
     try:
         results = ch_client.download_annual_accounts(company_number, max_years)
-        logger.info(f"Downloaded {results['total_downloaded']} files for {company_number}")
+        logger.info(f"📥 Downloaded {results['total_downloaded']} files for {company_number}")
         return results
     except Exception as e:
-        logger.error(f"Error downloading filings for {company_number}: {e}")
+        logger.error(f"❌ Error downloading filings for {company_number}: {e}")
         return None
 
 def filter_files_by_years(downloaded_files, selected_years):
@@ -451,20 +485,20 @@ def filter_files_by_years(downloaded_files, selected_years):
                 
                 if file_year in selected_years:
                     filtered_files.append(file_info)
-                    logger.info(f"Included file: {file_info['filename']} (Year {file_year})")
+                    logger.info(f"✅ Included file: {file_info['filename']} (Year {file_year})")
                     
             except Exception as e:
-                logger.warning(f"Could not determine year for {file_info['filename']}: {e}")
+                logger.warning(f"⚠️ Could not determine year for {file_info['filename']}: {e}")
     
     return filtered_files
 
 def extract_content_from_files(downloaded_files):
-    """Extract content from downloaded files"""
+    """Extract content from downloaded files with enhanced logging"""
     extracted_content = []
     
     for file_info in downloaded_files:
         try:
-            logger.info(f"Extracting content from: {file_info['filename']}")
+            logger.info(f"📄 Extracting content from: {file_info['filename']}")
             
             # Read PDF content
             with open(file_info['path'], 'rb') as f:
@@ -487,47 +521,70 @@ def extract_content_from_files(downloaded_files):
                             'extraction_method': extraction_result["extraction_method"]
                         }
                     })
-                    logger.info(f"Successfully extracted {len(content)} characters")
+                    logger.info(f"✅ Successfully extracted {len(content):,} characters from {file_info['filename']}")
                 else:
-                    logger.warning(f"Insufficient content extracted from {file_info['filename']}")
+                    logger.warning(f"⚠️ Insufficient content extracted from {file_info['filename']}")
             else:
-                logger.error(f"Extraction failed for {file_info['filename']}")
+                logger.error(f"❌ Extraction failed for {file_info['filename']}")
                 
         except Exception as e:
-            logger.error(f"Error extracting content from {file_info['filename']}: {e}")
+            logger.error(f"❌ Error extracting content from {file_info['filename']}: {e}")
     
     return extracted_content
 
-def process_and_analyze_content_api(extracted_content, company_name, company_number):
-    """Process and analyze content for API"""
+def process_and_analyze_content_api_enhanced(extracted_content, company_name, company_number):
+    """
+    ENHANCED process and analyze content for API with full multi-file support
+    
+    This is the key enhancement that enables individual file analysis and synthesis
+    """
     try:
-        # Process documents
+        logger.info(f"🧠 Starting ENHANCED content processing for {len(extracted_content)} files")
+        
+        # Process documents individually
         processed_documents = []
-        for content_data in extracted_content:
+        for i, content_data in enumerate(extracted_content):
+            logger.info(f"📋 Processing document {i+1}: {content_data['filename']}")
             processed = content_processor.process_document_content(
                 content_data['content'], content_data['metadata']
             )
             processed_documents.append(processed)
         
-        # Combine documents
+        # Combine documents for overall analysis
         combined_analysis = content_processor.combine_multiple_documents(processed_documents)
+        logger.info("✅ Document combination completed")
         
-        # Perform archetype analysis
+        # Prepare combined content (for backward compatibility)
         combined_content = "\n\n".join([content_data['content'] for content_data in extracted_content])
+        logger.info(f"📊 Combined content length: {len(combined_content):,} characters")
         
+        # *** ENHANCED ARCHETYPE ANALYSIS WITH INDIVIDUAL FILE DATA ***
+        logger.info("🚀 Performing ENHANCED archetype analysis with individual file support")
         archetype_analysis = archetype_analyzer.analyze_archetypes(
-            combined_content, company_name, company_number
+            combined_content,           # Combined content for compatibility
+            company_name, 
+            company_number,
+            extracted_content=extracted_content  # *** KEY ENHANCEMENT: Pass individual file data ***
         )
+        
+        logger.info("✅ Enhanced archetype analysis completed")
         
         return {
             'processed_content': combined_analysis,
             'archetype_analysis': archetype_analysis,
-            'document_count': len(extracted_content)
+            'document_count': len(extracted_content),
+            'enhancement_status': 'multi_file_analysis_enabled'
         }
         
     except Exception as e:
-        logger.error(f"Error processing content: {e}")
+        logger.error(f"❌ Error in enhanced content processing: {e}")
         return None
+
+# Legacy function for backward compatibility
+def process_and_analyze_content_api(extracted_content, company_name, company_number):
+    """Legacy process and analyze content for API (calls enhanced version)"""
+    logger.info("🔄 Using enhanced processing pipeline for backward compatibility")
+    return process_and_analyze_content_api_enhanced(extracted_content, company_name, company_number)
 
 # Database endpoints
 @app.route('/api/analysis/history/<company_number>')
@@ -745,6 +802,258 @@ def not_found(error):
 def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
+# New endpoint for analysis summary and insights
+@app.route('/api/analysis/summary/<company_number>/<int:analysis_id>')
+def get_analysis_summary(company_number, analysis_id):
+    """Get detailed summary of a specific analysis"""
+    try:
+        # Get the specific analysis from database
+        analyses = db.get_analysis_by_company(company_number)
+        target_analysis = None
+        
+        for analysis in analyses:
+            if analysis.get('id') == analysis_id:
+                target_analysis = analysis
+                break
+        
+        if not target_analysis:
+            return jsonify({
+                'success': False,
+                'error': 'Analysis not found'
+            }), 404
+        
+        # Generate summary using the AI analyzer
+        if hasattr(archetype_analyzer, 'get_analysis_summary'):
+            summary = archetype_analyzer.get_analysis_summary(target_analysis)
+        else:
+            # Fallback summary
+            summary = {
+                'company_name': target_analysis.get('company_name', 'Unknown'),
+                'analysis_id': analysis_id,
+                'business_strategy': target_analysis.get('business_strategy_dominant', 'Unknown'),
+                'risk_strategy': target_analysis.get('risk_strategy_dominant', 'Unknown'),
+                'analysis_date': target_analysis.get('analysis_date', 'Unknown')
+            }
+        
+        return jsonify({
+            'success': True,
+            'analysis_summary': summary
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting analysis summary: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# New endpoint for multi-file analysis comparison
+@app.route('/api/analysis/compare/<company_number>')
+def compare_analyses(company_number):
+    """Compare multiple analyses for the same company to show evolution over time"""
+    try:
+        analyses = db.get_analysis_by_company(company_number)
+        
+        if len(analyses) < 2:
+            return jsonify({
+                'success': False,
+                'error': 'Need at least 2 analyses to compare'
+            }), 400
+        
+        # Sort by analysis date
+        sorted_analyses = sorted(analyses, key=lambda x: x.get('analysis_date', ''), reverse=True)
+        
+        comparison_data = {
+            'company_number': company_number,
+            'company_name': sorted_analyses[0].get('company_name', 'Unknown'),
+            'total_analyses': len(sorted_analyses),
+            'comparison': []
+        }
+        
+        for analysis in sorted_analyses:
+            comparison_data['comparison'].append({
+                'analysis_id': analysis.get('id'),
+                'analysis_date': analysis.get('analysis_date'),
+                'years_analyzed': analysis.get('years_analyzed', []),
+                'files_processed': analysis.get('files_processed', 0),
+                'business_strategy': {
+                    'dominant': analysis.get('business_strategy_dominant'),
+                    'secondary': analysis.get('business_strategy_secondary')
+                },
+                'risk_strategy': {
+                    'dominant': analysis.get('risk_strategy_dominant'),
+                    'secondary': analysis.get('risk_strategy_secondary')
+                },
+                'analysis_type': analysis.get('analysis_type', 'unknown'),
+                'confidence_level': analysis.get('confidence_level', 'medium')
+            })
+        
+        # Identify changes over time
+        if len(sorted_analyses) >= 2:
+            latest = sorted_analyses[0]
+            previous = sorted_analyses[1]
+            
+            changes = {
+                'business_strategy_changed': latest.get('business_strategy_dominant') != previous.get('business_strategy_dominant'),
+                'risk_strategy_changed': latest.get('risk_strategy_dominant') != previous.get('risk_strategy_dominant'),
+                'analysis_improvement': latest.get('analysis_type', '').startswith('ai_') and not previous.get('analysis_type', '').startswith('ai_')
+            }
+            
+            comparison_data['changes'] = changes
+        
+        return jsonify({
+            'success': True,
+            'comparison_data': comparison_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error comparing analyses for {company_number}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# Enhanced endpoint for checking system status
+@app.route('/api/system/status')
+def system_status():
+    """Get comprehensive system status including multi-file analysis capabilities"""
+    try:
+        status = {
+            'service': 'Strategic Analysis API',
+            'version': '2.0.0',
+            'status': 'operational',
+            'timestamp': datetime.now().isoformat(),
+            'capabilities': {
+                'multi_file_analysis': True,
+                'ai_archetype_classification': archetype_analyzer.client_type == 'openai',
+                'enhanced_content_sampling': True,
+                'individual_file_processing': True,
+                'synthesis_and_confidence_scoring': True,
+                'database_integration': True
+            },
+            'components': {
+                'companies_house_client': 'operational',
+                'pdf_extractor': 'operational',
+                'content_processor': 'operational',
+                'ai_analyzer': archetype_analyzer.client_type,
+                'database': 'operational' if db.test_connection() else 'error',
+                'file_manager': 'operational',
+                'report_generator': 'operational'
+            },
+            'analysis_features': {
+                'content_sample_size': '15,000 characters (enhanced)',
+                'archetype_categories': {
+                    'business_strategy': len(archetype_analyzer.business_archetypes),
+                    'risk_strategy': len(archetype_analyzer.risk_archetypes)
+                },
+                'file_formats_supported': ['PDF (text)', 'PDF (OCR)', 'PDF (hybrid)'],
+                'years_supported': 'Configurable (default: last 6 years)',
+                'confidence_scoring': 'Multi-file synthesis based'
+            }
+        }
+        
+        return jsonify(status)
+        
+    except Exception as e:
+        logger.error(f"Error getting system status: {e}")
+        return jsonify({
+            'service': 'Strategic Analysis API',
+            'status': 'error',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+# Utility endpoint for validating requests before processing
+@app.route('/api/validate/request', methods=['POST'])
+def validate_analysis_request():
+    """Validate analysis request before processing"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                'valid': False,
+                'errors': ['No JSON data provided']
+            }), 400
+        
+        errors = []
+        warnings = []
+        
+        # Validate company number
+        company_number = data.get('company_number', '').strip()
+        if not company_number:
+            errors.append('Company number is required')
+        elif not validate_company_number(company_number):
+            errors.append('Invalid company number format')
+        
+        # Validate years
+        years = data.get('years', [])
+        if not years:
+            errors.append('Years array is required')
+        elif not isinstance(years, list):
+            errors.append('Years must be an array')
+        elif len(years) > 10:
+            warnings.append('More than 10 years selected - this may take a long time')
+        elif len(years) == 1:
+            warnings.append('Only 1 year selected - multi-file analysis benefits require multiple years')
+        
+        # Check if company exists (if no critical errors so far)
+        company_exists = False
+        company_name = 'Unknown'
+        if not errors and company_number:
+            try:
+                company_exists, company_name = ch_client.validate_company_exists(company_number)
+                if not company_exists:
+                    errors.append(f'Company {company_number} not found')
+            except Exception as e:
+                warnings.append(f'Could not verify company existence: {str(e)}')
+        
+        # Check for previous analyses
+        previous_analyses = []
+        if company_exists:
+            try:
+                previous_analyses = db.get_analysis_by_company(company_number)
+                if previous_analyses:
+                    warnings.append(f'Company has {len(previous_analyses)} previous analyses')
+            except Exception as e:
+                warnings.append(f'Could not check previous analyses: {str(e)}')
+        
+        validation_result = {
+            'valid': len(errors) == 0,
+            'errors': errors,
+            'warnings': warnings,
+            'company_info': {
+                'company_number': company_number,
+                'company_name': company_name,
+                'exists': company_exists
+            },
+            'request_info': {
+                'years_count': len(years),
+                'years_selected': years,
+                'estimated_files': len(years),  # Rough estimate
+                'previous_analyses_count': len(previous_analyses)
+            },
+            'system_capabilities': {
+                'ai_analysis_available': archetype_analyzer.client_type == 'openai',
+                'multi_file_support': True,
+                'max_recommended_years': 10
+            }
+        }
+        
+        return jsonify(validation_result)
+        
+    except Exception as e:
+        logger.error(f"Error validating request: {e}")
+        return jsonify({
+            'valid': False,
+            'errors': [f'Validation error: {str(e)}']
+        }), 500
+
 if __name__ == '__main__':
+    # Enhanced startup logging
+    logger.info("=" * 60)
+    logger.info("🚀 STRATEGIC ANALYSIS API v2.0.0 - ENHANCED MULTI-FILE")
+    logger.info("=" * 60)
+    logger.info("🔧 Capabilities:")
+    logger.info("   ✅ Multi-file individual analysis and synthesis")
+    logger.info("   ✅ Enhanced content sampling (15K chars)")
+    logger.info("   ✅ AI-powered archetype classification")
+    logger.info("   ✅ Confidence scoring and evidence tracking")
+    logger.info("   ✅ Database integration with analysis history")
+    logger.info("=" * 60)
+    
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
