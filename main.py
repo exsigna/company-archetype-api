@@ -122,6 +122,7 @@ def safe_init_component(name, init_func):
         return None
 
 # Initialize components
+db = None  # Initialize to None first
 try:
     ch_client = safe_init_component('CompaniesHouseClient', CompaniesHouseClient)
     content_processor = safe_init_component('ContentProcessor', ContentProcessor)
@@ -130,7 +131,13 @@ try:
     archetype_analyzer = safe_init_component('AIArchetypeAnalyzer', AIArchetypeAnalyzer)
     file_manager = safe_init_component('FileManager', FileManager)
     report_generator = safe_init_component('ReportGenerator', ReportGenerator)
-    db = safe_init_component('AnalysisDatabase', AnalysisDatabase)
+    
+    # Handle AnalysisDatabase separately since it might not be available
+    if 'database' not in [m.split(':')[0] for m in missing_modules]:
+        db = safe_init_component('AnalysisDatabase', AnalysisDatabase)
+    else:
+        logger.warning("⚠️ Database module not available - database features will be disabled")
+        components_status['AnalysisDatabase'] = {'status': 'error', 'error': 'Module not found'}
     
     # Log overall status
     successful_components = sum(1 for comp in components_status.values() if comp['status'] == 'ok')
@@ -139,6 +146,9 @@ try:
     
 except Exception as e:
     logger.error(f"Error during component initialization: {e}")
+    # Ensure db is set to None if there was an error
+    if 'db' not in locals():
+        db = None
 
 def initialize_app():
     """Initialize app and test database connection"""
