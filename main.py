@@ -36,6 +36,20 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
+# Global helper function for JSON serialization
+def make_json_serializable(obj):
+    """Convert dates and other non-serializable objects to strings"""
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    elif hasattr(obj, 'isoformat'):  # Handle other date-like objects
+        return obj.isoformat()
+    elif isinstance(obj, dict):
+        return {k: make_json_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [make_json_serializable(item) for item in obj]
+    else:
+        return obj
+
 # Initialize components (with error handling)
 try:
     ch_client = CompaniesHouseClient()
@@ -408,20 +422,6 @@ def analyze_company():
         # Enhanced response preparation with additional metadata
         archetype_analysis = analysis_results.get('archetype_analysis', {})
         analysis_metadata = archetype_analysis.get('analysis_metadata', {})
-        
-        # Helper function to ensure JSON serializable data
-        def make_json_serializable(obj):
-            """Convert dates and other non-serializable objects to strings"""
-            if isinstance(obj, (datetime, date)):
-                return obj.isoformat()
-            elif hasattr(obj, 'isoformat'):  # Handle other date-like objects
-                return obj.isoformat()
-            elif isinstance(obj, dict):
-                return {k: make_json_serializable(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [make_json_serializable(item) for item in obj]
-            else:
-                return obj
         
         response_data = {
             'success': True,
