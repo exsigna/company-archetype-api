@@ -1,40 +1,87 @@
 #!/usr/bin/env python3
 """
 Flask API for Strategic Analysis Tool with Database Integration
-Enhanced with Full Multi-File Analysis Support
+Enhanced with Full Multi-File Analysis Support and Improved Error Handling
 """
 
+import time
 import os
 import sys
 import json
 import logging
 import uuid
+import gc
+import psutil
 from datetime import datetime, date
 from pathlib import Path
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-# Import your existing modules
+# Import your existing modules with better error handling
+missing_modules = []
 try:
     from config import validate_config, validate_company_number
+except ImportError as e:
+    missing_modules.append(f"config: {e}")
+
+try:
     from companies_house_client import CompaniesHouseClient
+except ImportError as e:
+    missing_modules.append(f"companies_house_client: {e}")
+
+try:
     from content_processor import ContentProcessor
-    from pdf_extractor import PDFExtractor
+except ImportError as e:
+    missing_modules.append(f"content_processor: {e}")
+
+try:
+    from pdf_extractor import PDFExtractor, ParallelPDFExtractor, extract_multiple_files_parallel, extract_files_in_batches
+except ImportError as e:
+    missing_modules.append(f"pdf_extractor: {e}")
+
+try:
     from ai_analyzer import AIArchetypeAnalyzer
+except ImportError as e:
+    missing_modules.append(f"ai_analyzer: {e}")
+
+try:
     from file_manager import FileManager
+except ImportError as e:
+    missing_modules.append(f"file_manager: {e}")
+
+try:
     from report_generator import ReportGenerator
+except ImportError as e:
+    missing_modules.append(f"report_generator: {e}")
+
+try:
     from database import AnalysisDatabase
 except ImportError as e:
-    print(f"Import error: {e}")
-    sys.exit(1)
+    missing_modules.append(f"database: {e}")
+
+# Report missing modules but don't crash immediately
+if missing_modules:
+    print("⚠️  Warning: Some modules could not be imported:")
+    for module in missing_modules:
+        print(f"   - {module}")
+    print("   The API will start but some features may not work.")
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)
+
+# Configuration from environment variables
+MAX_PARALLEL_WORKERS = int(os.environ.get('MAX_PARALLEL_WORKERS', 4))
+PDF_EXTRACTION_TIMEOUT = int(os.environ.get('PDF_EXTRACTION_TIMEOUT', 300))
+MAX_FILES_PER_ANALYSIS = int(os.environ.get('MAX_FILES_PER_ANALYSIS', 20))
+MEMORY_WARNING_THRESHOLD = int(os.environ.get('MEMORY_WARNING_THRESHOLD', 85))
 
 # Global helper function for JSON serialization
 def make_json_serializable(obj):
@@ -50,63 +97,114 @@ def make_json_serializable(obj):
     else:
         return obj
 
-# Initialize components (with error handling)
+def check_memory_usage():
+    """Check memory usage and log warnings if high"""
+    try:
+        memory = psutil.virtual_memory()
+        if memory.percent > MEMORY_WARNING_THRESHOLD:
+            logger.warning(f"⚠️ High memory usage: {memory.percent:.1f}%")
+            gc.collect()
+            return True
+        return False
+    except Exception as e:
+        logger.debug(f"Could not check memory usage: {e}")
+        return False
+
+# Initialize components with better error handling
+components_status = {}
+
+def safe_init_component(name, init_func):
+    """Safely initialize a component and track its status"""
+    try:
+        component = init_func()
+        components_status[name] = {'status': 'ok', 'instance': component}
+        logger.info(f"✅ {name} initialized successfully")
+        return component
+    except Exception as e:
+        components_status[name] = {'status': 'error', 'error': str(e)}
+        logger.error(f"❌ {name} initialization failed: {e}")
+        return None
+
+# Initialize components
 try:
-    ch_client = CompaniesHouseClient()
-    content_processor = ContentProcessor()
-    pdf_extractor = PDFExtractor()
-    archetype_analyzer = AIArchetypeAnalyzer()
-    file_manager = FileManager()
-    report_generator = ReportGenerator()
-    db = AnalysisDatabase()
-    logger.info("All components initialized successfully")
+    ch_client = safe_init_component('CompaniesHouseClient', CompaniesHouseClient)
+    content_processor = safe_init_component('ContentProcessor', ContentProcessor)
+    pdf_extractor = safe_init_component('PDFExtractor', PDFExtractor)
+    parallel_pdf_extractor = safe_init_component('ParallelPDFExtractor', lambda: ParallelPDFExtractor(max_workers=MAX_PARALLEL_WORKERS))
+    archetype_analyzer = safe_init_component('AIArchetypeAnalyzer', AIArchetypeAnalyzer)
+    file_manager = safe_init_component('FileManager', FileManager)
+    report_generator = safe_init_component('ReportGenerator', ReportGenerator)
+    db = safe_init_component('AnalysisDatabase', AnalysisDatabase)
+    
+    # Log overall status
+    successful_components = sum(1 for comp in components_status.values() if comp['status'] == 'ok')
+    total_components = len(components_status)
+    logger.info(f"Component initialization: {successful_components}/{total_components} successful")
+    
 except Exception as e:
-    logger.error(f"Error initializing components: {e}")
-    # Don't exit - let the app start so we can see the error
+    logger.error(f"Error during component initialization: {e}")
 
 # Flag to track if initialization has been done
 _app_initialized = False
 
-@app.before_request
-def initialize_app():
-    """Initialize app and test database connection"""
+@app.before_first_request
+def initialize_app_once():
+    """Initialize app and test database connection - runs only once"""
     global _app_initialized
-    if not _app_initialized:
-        _app_initialized = True
-        
-        logger.info("Initializing Strategic Analysis API...")
-        
-        try:
-            # Validate configuration
+    if _app_initialized:
+        return
+    
+    _app_initialized = True
+    logger.info("🚀 Initializing Strategic Analysis API...")
+    
+    try:
+        # Validate configuration if available
+        if 'config' not in [m.split(':')[0] for m in missing_modules]:
             if not validate_config():
-                logger.error("Configuration validation failed")
+                logger.error("❌ Configuration validation failed")
                 return
-            
-            # Test database connection
+            else:
+                logger.info("✅ Configuration validated")
+        
+        # Test database connection if available
+        if db and components_status.get('AnalysisDatabase', {}).get('status') == 'ok':
             success = db.test_connection()
             if success:
                 logger.info("✅ Database connected successfully")
             else:
                 logger.error("❌ Database connection failed")
-            
-            logger.info("✅ Strategic Analysis API initialized")
-        except Exception as e:
-            logger.error(f"Error during initialization: {e}")
+        
+        logger.info("✅ Strategic Analysis API initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Error during initialization: {e}")
 
 @app.route('/')
 def home():
-    """Basic home page"""
+    """Enhanced home page with component status"""
+    component_statuses = {}
+    for name, info in components_status.items():
+        component_statuses[name] = info['status']
+    
     return jsonify({
         'service': 'Strategic Analysis API',
         'status': 'running',
-        'version': '2.0.0',  # Updated version for multi-file support
+        'version': '2.1.0',  # Updated version
+        'component_status': component_statuses,
         'features': [
             'Multi-file analysis with individual file processing',
             'Enhanced AI archetype classification',
             'Intelligent content sampling (15K chars)',
             'File-by-file synthesis and confidence scoring',
-            'Comprehensive evidence-based reasoning'
+            'Comprehensive evidence-based reasoning',
+            'Parallel PDF processing for improved performance',
+            'Memory usage monitoring and optimization'
         ],
+        'configuration': {
+            'max_parallel_workers': MAX_PARALLEL_WORKERS,
+            'pdf_extraction_timeout': PDF_EXTRACTION_TIMEOUT,
+            'max_files_per_analysis': MAX_FILES_PER_ANALYSIS,
+            'memory_warning_threshold': f"{MEMORY_WARNING_THRESHOLD}%"
+        },
         'endpoints': {
             'analyze': '/api/analyze',
             'years': '/api/years/<company_number>',
@@ -119,7 +217,9 @@ def home():
             'preview_cleanup': '/api/database/preview-cleanup/<company_number>',
             'cleanup_analysis': '/api/database/cleanup/<company_number>/<analysis_id>',
             'cleanup_invalid': '/api/database/cleanup/invalid/<company_number>',
-            'database_stats': '/api/database/stats'
+            'database_stats': '/api/database/stats',
+            'system_status': '/api/system/status',
+            'validate_request': '/api/validate/request'
         },
         'usage': {
             'lookup_company': 'GET /api/company/lookup/Marine - Check previous analyses',
@@ -133,29 +233,60 @@ def home():
 
 @app.route('/health')
 def health_check():
-    """Health check endpoint"""
-    return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()})
+    """Enhanced health check with component status and memory usage"""
+    try:
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+        
+        # Check critical components
+        critical_components = ['CompaniesHouseClient', 'PDFExtractor', 'ParallelPDFExtractor']
+        critical_status = all(
+            components_status.get(comp, {}).get('status') == 'ok' 
+            for comp in critical_components
+        )
+        
+        health_status = 'healthy' if critical_status else 'degraded'
+        
+        return jsonify({
+            'status': health_status,
+            'timestamp': datetime.now().isoformat(),
+            'components': {name: info['status'] for name, info in components_status.items()},
+            'system': {
+                'memory_usage_percent': round(memory.percent, 1),
+                'memory_available_gb': round(memory.available / (1024**3), 1),
+                'disk_usage_percent': round(disk.percent, 1),
+                'disk_free_gb': round(disk.free / (1024**3), 1)
+            },
+            'configuration': {
+                'max_parallel_workers': MAX_PARALLEL_WORKERS,
+                'extraction_timeout': PDF_EXTRACTION_TIMEOUT
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
 
 @app.route('/api/company/lookup/<company_identifier>')
 def lookup_company_analysis(company_identifier):
     """
     Look up previous analyses for a company by name or number
-    
-    Args:
-        company_identifier: Company name or company number
-    
-    Returns:
-        JSON with previous analysis metadata or empty if none found
     """
+    if not db or components_status.get('AnalysisDatabase', {}).get('status') != 'ok':
+        return jsonify({
+            'success': False,
+            'error': 'Database not available'
+        }), 503
+    
     try:
         logger.info(f"Looking up previous analyses for: {company_identifier}")
         
         # First, try to find by company number (exact match)
         if validate_company_number(company_identifier):
-            # It's a valid company number format
             results = db.get_analysis_by_company(company_identifier)
             if results:
-                # Format the response
                 analysis_metadata = []
                 for result in results:
                     metadata = {
@@ -187,11 +318,9 @@ def lookup_company_analysis(company_identifier):
         search_results = db.search_companies(company_identifier)
         
         if search_results:
-            # Get detailed analysis for the first matching company
             first_match = search_results[0]
             detailed_analyses = db.get_analysis_by_company(first_match['company_number'])
             
-            # Format the response
             analysis_metadata = []
             for result in detailed_analyses:
                 metadata = {
@@ -220,7 +349,6 @@ def lookup_company_analysis(company_identifier):
                 'other_matches': len(search_results) - 1 if len(search_results) > 1 else 0
             })
         
-        # No previous analyses found
         return jsonify({
             'success': True,
             'found': False,
@@ -236,17 +364,10 @@ def lookup_company_analysis(company_identifier):
             'error': str(e)
         }), 500
 
-
 @app.route('/api/company/check', methods=['POST'])
 def check_company_before_analysis():
     """
     Check if a company has previous analyses before running new analysis
-    Accepts both company name and company number
-    
-    Request body:
-    {
-        "company_identifier": "Marine and General" or "00000006"
-    }
     """
     try:
         data = request.get_json()
@@ -257,8 +378,6 @@ def check_company_before_analysis():
             }), 400
         
         company_identifier = data.get('company_identifier', '').strip()
-        
-        # Use the lookup function
         return lookup_company_analysis(company_identifier)
         
     except Exception as e:
@@ -271,8 +390,13 @@ def check_company_before_analysis():
 @app.route('/api/years/<company_number>')
 def get_available_years(company_number):
     """Get available filing years for a company"""
+    if not ch_client or components_status.get('CompaniesHouseClient', {}).get('status') != 'ok':
+        return jsonify({
+            'success': False,
+            'error': 'Companies House client not available'
+        }), 503
+    
     try:
-        # Validate company number
         if not validate_company_number(company_number):
             return jsonify({
                 'success': False,
@@ -281,7 +405,6 @@ def get_available_years(company_number):
         
         logger.info(f"Getting available years for company {company_number}")
         
-        # Get filing history
         filing_history = ch_client.get_filing_history(company_number)
         
         if not filing_history:
@@ -323,11 +446,27 @@ def get_available_years(company_number):
 
 @app.route('/api/analyze', methods=['POST'])
 def analyze_company():
-    """Enhanced main analysis endpoint with full multi-file support and database storage"""
+    """Enhanced main analysis endpoint with improved error handling and performance monitoring"""
+    
+    # Check if critical components are available
+    required_components = ['CompaniesHouseClient', 'ContentProcessor', 'AIArchetypeAnalyzer']
+    missing_components = [
+        comp for comp in required_components 
+        if components_status.get(comp, {}).get('status') != 'ok'
+    ]
+    
+    if missing_components:
+        return jsonify({
+            'success': False,
+            'error': f'Required components not available: {", ".join(missing_components)}'
+        }), 503
     
     # Generate unique request ID to track this analysis
     request_id = str(uuid.uuid4())[:8]
     logger.info(f"🆔 Analysis request {request_id} started")
+    
+    # Check memory usage at start
+    check_memory_usage()
     
     try:
         # Get request data
@@ -358,6 +497,12 @@ def analyze_company():
             return jsonify({
                 'success': False,
                 'error': 'Years array is required'
+            }), 400
+        
+        if len(years) > MAX_FILES_PER_ANALYSIS:
+            return jsonify({
+                'success': False,
+                'error': f'Too many years requested. Maximum: {MAX_FILES_PER_ANALYSIS}'
             }), 400
         
         logger.info(f"🚀 Request {request_id}: Starting analysis for company {company_number}, years: {years}")
@@ -395,7 +540,10 @@ def analyze_company():
         
         logger.info(f"📋 Found {len(filtered_files)} files matching selected years")
         
-        # Extract content from PDFs
+        # Check memory before extraction
+        check_memory_usage()
+        
+        # Extract content from PDFs with improved method
         logger.info(f"📄 Extracting content from {len(filtered_files)} files...")
         extracted_content = extract_content_from_files(filtered_files)
         
@@ -406,6 +554,9 @@ def analyze_company():
             }), 500
         
         logger.info(f"✅ Successfully extracted content from {len(extracted_content)} files")
+        
+        # Check memory before analysis
+        check_memory_usage()
         
         # Enhanced content processing and analysis
         logger.info("🧠 Processing and analyzing content...")
@@ -419,7 +570,7 @@ def analyze_company():
                 'error': 'Content analysis failed'
             }), 500
         
-        # Prepare response data (simplified to match original structure)
+        # Prepare response data
         archetype_analysis = analysis_results.get('archetype_analysis', {})
         
         response_data = {
@@ -431,37 +582,56 @@ def analyze_company():
             'business_strategy': archetype_analysis.get('business_strategy_archetypes', {}),
             'risk_strategy': archetype_analysis.get('risk_strategy_archetypes', {}),
             'analysis_date': datetime.now().isoformat(),
-            'analysis_type': archetype_analysis.get('analysis_type', 'unknown')
+            'analysis_type': archetype_analysis.get('analysis_type', 'unknown'),
+            'processing_stats': {
+                'parallel_extraction_used': len(filtered_files) > 1,
+                'total_content_length': sum(len(content.get('content', '')) for content in extracted_content),
+                'extraction_methods': list(set(
+                    content.get('metadata', {}).get('extraction_method', 'unknown') 
+                    for content in extracted_content
+                ))
+            }
         }
         
-        # Store in database with proper JSON serialization
-        try:
-            logger.info(f"💾 Request {request_id}: Storing analysis results in database...")
-            
-            # Ensure all data is JSON serializable before storing
-            serializable_response = make_json_serializable(response_data)
-            
-            record_id = db.store_analysis_result(serializable_response)
-            response_data['database_id'] = record_id
-            logger.info(f"✅ Request {request_id}: Analysis stored in database with ID: {record_id}")
-            
-        except Exception as db_error:
-            logger.error(f"❌ Request {request_id}: Database storage failed: {str(db_error)}")
-            # Continue without failing the whole request
-            response_data['database_warning'] = 'Analysis completed but database storage had issues'
+        # Store in database if available
+        if db and components_status.get('AnalysisDatabase', {}).get('status') == 'ok':
+            try:
+                logger.info(f"💾 Request {request_id}: Storing analysis results in database...")
+                serializable_response = make_json_serializable(response_data)
+                record_id = db.store_analysis_result(serializable_response)
+                response_data['database_id'] = record_id
+                logger.info(f"✅ Request {request_id}: Analysis stored in database with ID: {record_id}")
+                
+            except Exception as db_error:
+                logger.error(f"❌ Request {request_id}: Database storage failed: {str(db_error)}")
+                response_data['database_warning'] = 'Analysis completed but database storage had issues'
+        else:
+            response_data['database_warning'] = 'Database not available - results not stored'
         
         # Clean up temporary files
         try:
-            ch_client.cleanup_temp_files()
+            if ch_client:
+                ch_client.cleanup_temp_files()
             logger.info("🧹 Temporary files cleaned up")
         except Exception as cleanup_error:
             logger.warning(f"⚠️ Cleanup warning: {cleanup_error}")
+        
+        # Final memory cleanup
+        gc.collect()
         
         logger.info(f"🎉 Request {request_id}: Analysis completed successfully for {company_number}")
         return jsonify(response_data)
         
     except Exception as e:
         logger.error(f"❌ Request {request_id}: Analysis failed: {e}")
+        # Ensure cleanup on error
+        try:
+            if ch_client:
+                ch_client.cleanup_temp_files()
+            gc.collect()
+        except:
+            pass
+        
         return jsonify({
             'success': False,
             'error': str(e),
@@ -471,6 +641,9 @@ def analyze_company():
 def download_company_filings(company_number, max_years):
     """Download company filings using existing method"""
     try:
+        if not ch_client:
+            raise Exception("Companies House client not available")
+        
         results = ch_client.download_annual_accounts(company_number, max_years)
         logger.info(f"📥 Downloaded {results['total_downloaded']} files for {company_number}")
         return results
@@ -504,7 +677,43 @@ def filter_files_by_years(downloaded_files, selected_years):
     return filtered_files
 
 def extract_content_from_files(downloaded_files):
-    """Extract content from downloaded files with enhanced logging"""
+    """
+    Extract content from downloaded files using parallel processing when beneficial
+    """
+    try:
+        logger.info(f"📄 Starting content extraction from {len(downloaded_files)} files")
+        
+        # Use parallel extraction for multiple files, sequential for single files
+        if len(downloaded_files) > 1 and parallel_pdf_extractor:
+            logger.info(f"🚀 Using parallel extraction for {len(downloaded_files)} files")
+            extracted_content = extract_multiple_files_parallel(downloaded_files)
+        else:
+            logger.info("📄 Using sequential extraction")
+            extracted_content = extract_content_from_files_legacy(downloaded_files)
+        
+        # Filter out None results and log statistics
+        valid_content = [content for content in extracted_content if content is not None]
+        
+        logger.info(f"✅ Content extraction completed: {len(valid_content)}/{len(downloaded_files)} files successful")
+        
+        if len(valid_content) != len(downloaded_files):
+            failed_count = len(downloaded_files) - len(valid_content)
+            logger.warning(f"⚠️ {failed_count} files failed extraction")
+        
+        return valid_content
+        
+    except Exception as e:
+        logger.error(f"❌ Error in content extraction: {e}")
+        return []
+
+def extract_content_from_files_legacy(downloaded_files):
+    """
+    Legacy sequential extraction method - kept for fallback
+    """
+    if not pdf_extractor:
+        logger.error("PDF extractor not available")
+        return []
+    
     extracted_content = []
     
     for file_info in downloaded_files:
@@ -546,6 +755,10 @@ def extract_content_from_files(downloaded_files):
 def process_and_analyze_content_api(extracted_content, company_name, company_number):
     """Process and analyze content for API with enhanced multi-file support"""
     try:
+        if not content_processor or not archetype_analyzer:
+            logger.error("Content processor or archetype analyzer not available")
+            return None
+        
         logger.info(f"🧠 Starting content processing for {len(extracted_content)} files")
         
         # Process documents individually
@@ -573,7 +786,7 @@ def process_and_analyze_content_api(extracted_content, company_name, company_num
         for content_data in extracted_content:
             serializable_content = {
                 'filename': content_data['filename'],
-                'date': make_json_serializable(content_data['date']),  # Fix date serialization
+                'date': make_json_serializable(content_data['date']),
                 'content': content_data['content'],
                 'metadata': content_data['metadata']
             }
@@ -598,10 +811,16 @@ def process_and_analyze_content_api(extracted_content, company_name, company_num
         logger.error(f"❌ Error in content processing: {e}")
         return None
 
-# Database endpoints
+# Database endpoints - with better error handling
 @app.route('/api/analysis/history/<company_number>')
 def get_company_history(company_number):
     """Get analysis history for a company"""
+    if not db or components_status.get('AnalysisDatabase', {}).get('status') != 'ok':
+        return jsonify({
+            'success': False,
+            'error': 'Database not available'
+        }), 503
+    
     try:
         results = db.get_analysis_by_company(company_number)
         return jsonify({
@@ -617,6 +836,12 @@ def get_company_history(company_number):
 @app.route('/api/analysis/recent')
 def get_recent():
     """Get recent analyses"""
+    if not db or components_status.get('AnalysisDatabase', {}).get('status') != 'ok':
+        return jsonify({
+            'success': False,
+            'error': 'Database not available'
+        }), 503
+    
     try:
         results = db.get_recent_analyses()
         return jsonify({
@@ -631,6 +856,12 @@ def get_recent():
 @app.route('/api/analysis/search/<search_term>')
 def search_companies(search_term):
     """Search companies"""
+    if not db or components_status.get('AnalysisDatabase', {}).get('status') != 'ok':
+        return jsonify({
+            'success': False,
+            'error': 'Database not available'
+        }), 503
+    
     try:
         results = db.search_companies(search_term)
         return jsonify({
@@ -646,6 +877,12 @@ def search_companies(search_term):
 @app.route('/api/database/test')
 def test_database_endpoint():
     """Test database connection"""
+    if not db:
+        return jsonify({
+            'success': False,
+            'message': 'Database component not initialized'
+        }), 503
+    
     try:
         success = db.test_connection()
         return jsonify({
@@ -660,6 +897,12 @@ def test_database_endpoint():
 @app.route('/api/database/preview-cleanup/<company_number>')
 def preview_cleanup(company_number):
     """Preview what would be deleted without actually deleting - SAFETY FIRST"""
+    if not db or components_status.get('AnalysisDatabase', {}).get('status') != 'ok':
+        return jsonify({
+            'success': False,
+            'error': 'Database not available'
+        }), 503
+    
     try:
         logger.info(f"Previewing cleanup for company {company_number}")
         
@@ -744,10 +987,15 @@ def preview_cleanup(company_number):
 @app.route('/api/database/cleanup/<company_number>/<int:analysis_id>', methods=['DELETE'])
 def delete_specific_analysis(company_number, analysis_id):
     """Delete a specific analysis by ID"""
+    if not db or components_status.get('AnalysisDatabase', {}).get('status') != 'ok':
+        return jsonify({
+            'success': False,
+            'error': 'Database not available'
+        }), 503
+    
     try:
         logger.info(f"Attempting to delete analysis ID {analysis_id} for company {company_number}")
         
-        # Call database method to delete specific analysis
         success = db.delete_analysis_by_id(analysis_id, company_number)
         
         if success:
@@ -772,10 +1020,15 @@ def delete_specific_analysis(company_number, analysis_id):
 @app.route('/api/database/cleanup/invalid/<company_number>', methods=['DELETE'])
 def cleanup_invalid_analyses(company_number):
     """Remove all invalid analysis entries for a company - USE WITH EXTREME CAUTION"""
+    if not db or components_status.get('AnalysisDatabase', {}).get('status') != 'ok':
+        return jsonify({
+            'success': False,
+            'error': 'Database not available'
+        }), 503
+    
     try:
         logger.warning(f"⚠️  DANGEROUS OPERATION: Cleaning up invalid analyses for company {company_number}")
         
-        # Call database method to cleanup invalid analyses (now much more conservative)
         deleted_count = db.cleanup_invalid_analyses(company_number)
         
         return jsonify({
@@ -795,6 +1048,12 @@ def cleanup_invalid_analyses(company_number):
 @app.route('/api/database/stats')
 def get_database_stats():
     """Get database statistics"""
+    if not db or components_status.get('AnalysisDatabase', {}).get('status') != 'ok':
+        return jsonify({
+            'success': False,
+            'error': 'Database not available'
+        }), 503
+    
     try:
         stats = db.get_analysis_statistics()
         return jsonify({
@@ -805,21 +1064,16 @@ def get_database_stats():
         logger.error(f"Error getting database stats: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# Error handlers
-@app.errorhandler(404)
-def not_found(error):
-    return jsonify({'error': 'Endpoint not found'}), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    return jsonify({'error': 'Internal server error'}), 500
-
-# New endpoint for analysis summary and insights
 @app.route('/api/analysis/summary/<company_number>/<int:analysis_id>')
 def get_analysis_summary(company_number, analysis_id):
     """Get detailed summary of a specific analysis"""
+    if not db or components_status.get('AnalysisDatabase', {}).get('status') != 'ok':
+        return jsonify({
+            'success': False,
+            'error': 'Database not available'
+        }), 503
+    
     try:
-        # Get the specific analysis from database
         analyses = db.get_analysis_by_company(company_number)
         target_analysis = None
         
@@ -834,8 +1088,8 @@ def get_analysis_summary(company_number, analysis_id):
                 'error': 'Analysis not found'
             }), 404
         
-        # Generate summary using the AI analyzer
-        if hasattr(archetype_analyzer, 'get_analysis_summary'):
+        # Generate summary using the AI analyzer if available
+        if archetype_analyzer and hasattr(archetype_analyzer, 'get_analysis_summary'):
             summary = archetype_analyzer.get_analysis_summary(target_analysis)
         else:
             # Fallback summary
@@ -856,10 +1110,15 @@ def get_analysis_summary(company_number, analysis_id):
         logger.error(f"Error getting analysis summary: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# New endpoint for multi-file analysis comparison
 @app.route('/api/analysis/compare/<company_number>')
 def compare_analyses(company_number):
     """Compare multiple analyses for the same company to show evolution over time"""
+    if not db or components_status.get('AnalysisDatabase', {}).get('status') != 'ok':
+        return jsonify({
+            'success': False,
+            'error': 'Database not available'
+        }), 503
+    
     try:
         analyses = db.get_analysis_by_company(company_number)
         
@@ -919,42 +1178,94 @@ def compare_analyses(company_number):
         logger.error(f"Error comparing analyses for {company_number}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# Enhanced endpoint for checking system status
 @app.route('/api/system/status')
 def system_status():
     """Get comprehensive system status including multi-file analysis capabilities"""
     try:
+        # Get system memory info
+        memory_info = {}
+        try:
+            memory = psutil.virtual_memory()
+            memory_info = {
+                'total_gb': round(memory.total / (1024**3), 1),
+                'available_gb': round(memory.available / (1024**3), 1),
+                'usage_percent': round(memory.percent, 1),
+                'status': 'ok' if memory.percent < MEMORY_WARNING_THRESHOLD else 'warning'
+            }
+        except Exception as e:
+            memory_info = {'error': str(e)}
+        
+        # Component capabilities
+        capabilities = {
+            'multi_file_analysis': parallel_pdf_extractor is not None,
+            'ai_archetype_classification': archetype_analyzer and hasattr(archetype_analyzer, 'client_type'),
+            'enhanced_content_sampling': True,
+            'individual_file_processing': True,
+            'synthesis_and_confidence_scoring': True,
+            'database_integration': db is not None
+        }
+        
+        # Database status
+        db_status = 'not_available'
+        if db:
+            try:
+                db_status = 'operational' if db.test_connection() else 'error'
+            except:
+                db_status = 'error'
+        
+        # AI analyzer info
+        ai_analyzer_info = 'not_available'
+        if archetype_analyzer:
+            try:
+                ai_analyzer_info = getattr(archetype_analyzer, 'client_type', 'unknown')
+            except:
+                ai_analyzer_info = 'error'
+        
+        # Archetype counts
+        archetype_counts = {'business_strategy': 0, 'risk_strategy': 0}
+        if archetype_analyzer:
+            try:
+                archetype_counts = {
+                    'business_strategy': len(getattr(archetype_analyzer, 'business_archetypes', [])),
+                    'risk_strategy': len(getattr(archetype_analyzer, 'risk_archetypes', []))
+                }
+            except:
+                pass
+        
         status = {
             'service': 'Strategic Analysis API',
-            'version': '2.0.0',
+            'version': '2.1.0',
             'status': 'operational',
             'timestamp': datetime.now().isoformat(),
-            'capabilities': {
-                'multi_file_analysis': True,
-                'ai_archetype_classification': archetype_analyzer.client_type == 'openai',
-                'enhanced_content_sampling': True,
-                'individual_file_processing': True,
-                'synthesis_and_confidence_scoring': True,
-                'database_integration': True
+            'system': {
+                'memory': memory_info,
+                'cpu_count': os.cpu_count(),
+                'parallel_workers_configured': MAX_PARALLEL_WORKERS
             },
+            'capabilities': capabilities,
             'components': {
-                'companies_house_client': 'operational',
-                'pdf_extractor': 'operational',
-                'content_processor': 'operational',
-                'ai_analyzer': archetype_analyzer.client_type,
-                'database': 'operational' if db.test_connection() else 'error',
-                'file_manager': 'operational',
-                'report_generator': 'operational'
+                'companies_house_client': components_status.get('CompaniesHouseClient', {}).get('status', 'error'),
+                'pdf_extractor': components_status.get('PDFExtractor', {}).get('status', 'error'),
+                'parallel_pdf_extractor': components_status.get('ParallelPDFExtractor', {}).get('status', 'error'),
+                'content_processor': components_status.get('ContentProcessor', {}).get('status', 'error'),
+                'ai_analyzer': ai_analyzer_info,
+                'database': db_status,
+                'file_manager': components_status.get('FileManager', {}).get('status', 'error'),
+                'report_generator': components_status.get('ReportGenerator', {}).get('status', 'error')
             },
             'analysis_features': {
                 'content_sample_size': '15,000 characters (enhanced)',
-                'archetype_categories': {
-                    'business_strategy': len(archetype_analyzer.business_archetypes),
-                    'risk_strategy': len(archetype_analyzer.risk_archetypes)
-                },
+                'archetype_categories': archetype_counts,
                 'file_formats_supported': ['PDF (text)', 'PDF (OCR)', 'PDF (hybrid)'],
                 'years_supported': 'Configurable (default: last 6 years)',
-                'confidence_scoring': 'Multi-file synthesis based'
+                'confidence_scoring': 'Multi-file synthesis based',
+                'max_files_per_analysis': MAX_FILES_PER_ANALYSIS,
+                'extraction_timeout_seconds': PDF_EXTRACTION_TIMEOUT
+            },
+            'component_errors': {
+                name: info.get('error', '') 
+                for name, info in components_status.items() 
+                if info.get('status') == 'error'
             }
         }
         
@@ -969,7 +1280,6 @@ def system_status():
             'timestamp': datetime.now().isoformat()
         }), 500
 
-# Utility endpoint for validating requests before processing
 @app.route('/api/validate/request', methods=['POST'])
 def validate_analysis_request():
     """Validate analysis request before processing"""
@@ -984,6 +1294,16 @@ def validate_analysis_request():
         errors = []
         warnings = []
         
+        # Check critical components
+        required_components = ['CompaniesHouseClient', 'ContentProcessor', 'AIArchetypeAnalyzer']
+        missing_components = [
+            comp for comp in required_components 
+            if components_status.get(comp, {}).get('status') != 'ok'
+        ]
+        
+        if missing_components:
+            errors.append(f'Required components not available: {", ".join(missing_components)}')
+        
         # Validate company number
         company_number = data.get('company_number', '').strip()
         if not company_number:
@@ -997,15 +1317,25 @@ def validate_analysis_request():
             errors.append('Years array is required')
         elif not isinstance(years, list):
             errors.append('Years must be an array')
+        elif len(years) > MAX_FILES_PER_ANALYSIS:
+            errors.append(f'Too many years selected (max: {MAX_FILES_PER_ANALYSIS})')
         elif len(years) > 10:
             warnings.append('More than 10 years selected - this may take a long time')
         elif len(years) == 1:
             warnings.append('Only 1 year selected - multi-file analysis benefits require multiple years')
         
+        # Check memory
+        try:
+            memory = psutil.virtual_memory()
+            if memory.percent > 80:
+                warnings.append(f'High system memory usage ({memory.percent:.1f}%) - analysis may be slower')
+        except:
+            pass
+        
         # Check if company exists (if no critical errors so far)
         company_exists = False
         company_name = 'Unknown'
-        if not errors and company_number:
+        if not errors and company_number and ch_client:
             try:
                 company_exists, company_name = ch_client.validate_company_exists(company_number)
                 if not company_exists:
@@ -1015,7 +1345,7 @@ def validate_analysis_request():
         
         # Check for previous analyses
         previous_analyses = []
-        if company_exists:
+        if company_exists and db and components_status.get('AnalysisDatabase', {}).get('status') == 'ok':
             try:
                 previous_analyses = db.get_analysis_by_company(company_number)
                 if previous_analyses:
@@ -1035,14 +1365,17 @@ def validate_analysis_request():
             'request_info': {
                 'years_count': len(years),
                 'years_selected': years,
-                'estimated_files': len(years),  # Rough estimate
+                'estimated_files': len(years),
                 'previous_analyses_count': len(previous_analyses)
             },
             'system_capabilities': {
-                'ai_analysis_available': archetype_analyzer.client_type == 'openai',
-                'multi_file_support': True,
-                'max_recommended_years': 10
-            }
+                'ai_analysis_available': archetype_analyzer is not None,
+                'parallel_processing_available': parallel_pdf_extractor is not None,
+                'database_available': db is not None,
+                'max_recommended_years': 10,
+                'max_allowed_years': MAX_FILES_PER_ANALYSIS
+            },
+            'component_status': {name: info['status'] for name, info in components_status.items()}
         }
         
         return jsonify(validation_result)
@@ -1054,18 +1387,54 @@ def validate_analysis_request():
             'errors': [f'Validation error: {str(e)}']
         }), 500
 
+# Error handlers
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({'error': 'Endpoint not found'}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    logger.error(f"Internal server error: {error}")
+    return jsonify({'error': 'Internal server error'}), 500
+
+@app.errorhandler(503)
+def service_unavailable(error):
+    return jsonify({'error': 'Service temporarily unavailable'}), 503
+
 if __name__ == '__main__':
     # Enhanced startup logging
-    logger.info("=" * 60)
-    logger.info("🚀 STRATEGIC ANALYSIS API v2.0.0 - ENHANCED MULTI-FILE")
-    logger.info("=" * 60)
-    logger.info("🔧 Capabilities:")
-    logger.info("   ✅ Multi-file individual analysis and synthesis")
-    logger.info("   ✅ Enhanced content sampling (15K chars)")
-    logger.info("   ✅ AI-powered archetype classification")
-    logger.info("   ✅ Confidence scoring and evidence tracking")
-    logger.info("   ✅ Database integration with analysis history")
-    logger.info("=" * 60)
+    logger.info("=" * 70)
+    logger.info("🚀 STRATEGIC ANALYSIS API v2.1.0 - ENHANCED & ROBUST")
+    logger.info("=" * 70)
+    logger.info("🔧 Enhanced Features:")
+    logger.info("   ✅ Improved error handling and graceful degradation")
+    logger.info("   ✅ Component status monitoring and health checks")
+    logger.info("   ✅ Memory usage monitoring and optimization")
+    logger.info("   ✅ Parallel PDF processing with fallback")
+    logger.info("   ✅ Enhanced configuration via environment variables")
+    logger.info("   ✅ Better logging and performance tracking")
+    logger.info("=" * 70)
+    logger.info(f"📊 Configuration:")
+    logger.info(f"   - Max parallel workers: {MAX_PARALLEL_WORKERS}")
+    logger.info(f"   - PDF extraction timeout: {PDF_EXTRACTION_TIMEOUT}s")
+    logger.info(f"   - Max files per analysis: {MAX_FILES_PER_ANALYSIS}")
+    logger.info(f"   - Memory warning threshold: {MEMORY_WARNING_THRESHOLD}%")
+    logger.info("=" * 70)
+    
+    # Final component status report
+    successful_components = sum(1 for comp in components_status.values() if comp['status'] == 'ok')
+    total_components = len(components_status)
+    logger.info(f"🎯 Components ready: {successful_components}/{total_components}")
+    
+    if successful_components < total_components:
+        logger.warning("⚠️  Some components failed to initialize - check logs above")
+        failed_components = [name for name, info in components_status.items() if info['status'] == 'error']
+        logger.warning(f"   Failed components: {', '.join(failed_components)}")
+    
+    logger.info("=" * 70)
     
     port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    
+    logger.info(f"🌐 Starting server on port {port} (debug: {debug_mode})")
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)
