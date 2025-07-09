@@ -453,6 +453,28 @@ class AnalysisDatabase:
                                     result = [dict(row) for row in rows]
                                     logger.info(f"🔍 DEBUG: Returning {len(result)} results from '{table_name}'")
                                     return result
+                                
+                                # Try without leading zero
+                                company_number_no_zero = company_number.lstrip('0')
+                                if company_number_no_zero != company_number:
+                                    no_zero_match = conn.execute(f'SELECT COUNT(*) FROM {table_name} WHERE company_number = ?', (company_number_no_zero,)).fetchone()[0]
+                                    logger.info(f"🔍 DEBUG: Matches in '{table_name}' for '{company_number_no_zero}' (no leading zero): {no_zero_match}")
+                                    
+                                    if no_zero_match > 0:
+                                        rows = conn.execute(f'''
+                                            SELECT * FROM {table_name} 
+                                            WHERE company_number = ? 
+                                            ORDER BY analysis_date DESC
+                                        ''', (company_number_no_zero,)).fetchall()
+                                        
+                                        result = [dict(row) for row in rows]
+                                        logger.info(f"🔍 DEBUG: Returning {len(result)} results from '{table_name}' (no leading zero)")
+                                        return result
+                        else:
+                            logger.info(f"🔍 DEBUG: Table '{table_name}' does not exist")
+                    
+                    except Exception as table_error:
+                        logger.warning(f"🔍 DEBUG: Error checking table '{table_name}': {table_error}")
                 
                 logger.info(f"🔍 DEBUG: No matches found in any table for company number '{company_number}'")
                 return []
