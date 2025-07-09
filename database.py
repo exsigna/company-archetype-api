@@ -3,6 +3,7 @@
 Database module for Strategic Analysis API
 Handles storage and retrieval of analysis results
 ENHANCED: Checks multiple tables (analysis_history, analysis_results)
+FIXED: Proper extraction and storage of business/risk strategy fields
 """
 
 import os
@@ -165,9 +166,63 @@ class AnalysisDatabase:
             logger.error(f"Database connection test failed: {e}")
             return False
     
+    def extract_business_strategy(self, analysis_data: Dict[str, Any]) -> tuple:
+        """
+        Extract business strategy information from analysis data
+        
+        Returns:
+            tuple: (dominant, secondary, reasoning)
+        """
+        # Try different possible locations for business strategy
+        if 'business_strategy_analysis' in analysis_data:
+            strategy = analysis_data['business_strategy_analysis']
+            dominant = strategy.get('dominant_archetype') or strategy.get('dominant')
+            secondary = strategy.get('secondary_archetype') or strategy.get('secondary')
+            reasoning = strategy.get('strategic_rationale') or strategy.get('reasoning')
+            return dominant, secondary, reasoning
+        
+        elif 'business_strategy' in analysis_data:
+            strategy = analysis_data['business_strategy']
+            if isinstance(strategy, dict):
+                dominant = strategy.get('dominant_archetype') or strategy.get('dominant')
+                secondary = strategy.get('secondary_archetype') or strategy.get('secondary')
+                reasoning = strategy.get('strategic_rationale') or strategy.get('reasoning')
+                return dominant, secondary, reasoning
+            elif isinstance(strategy, str):
+                return strategy, None, None
+        
+        return None, None, None
+    
+    def extract_risk_strategy(self, analysis_data: Dict[str, Any]) -> tuple:
+        """
+        Extract risk strategy information from analysis data
+        
+        Returns:
+            tuple: (dominant, secondary, reasoning)
+        """
+        # Try different possible locations for risk strategy
+        if 'risk_strategy_analysis' in analysis_data:
+            strategy = analysis_data['risk_strategy_analysis']
+            dominant = strategy.get('dominant_archetype') or strategy.get('dominant')
+            secondary = strategy.get('secondary_archetype') or strategy.get('secondary')
+            reasoning = strategy.get('risk_rationale') or strategy.get('reasoning')
+            return dominant, secondary, reasoning
+        
+        elif 'risk_strategy' in analysis_data:
+            strategy = analysis_data['risk_strategy']
+            if isinstance(strategy, dict):
+                dominant = strategy.get('dominant_archetype') or strategy.get('dominant')
+                secondary = strategy.get('secondary_archetype') or strategy.get('secondary')
+                reasoning = strategy.get('risk_rationale') or strategy.get('reasoning')
+                return dominant, secondary, reasoning
+            elif isinstance(strategy, str):
+                return strategy, None, None
+        
+        return None, None, None
+    
     def store_analysis_result(self, analysis_data: Dict[str, Any]) -> int:
         """
-        Store analysis result in database
+        Store analysis result in database with FIXED field extraction
         
         Args:
             analysis_data: Analysis result dictionary
@@ -177,32 +232,31 @@ class AnalysisDatabase:
         """
         with self.lock:
             try:
-                # Extract data from analysis_data
+                # Extract basic data
                 company_number = analysis_data.get('company_number', '')
                 company_name = analysis_data.get('company_name', '')
                 analysis_date = analysis_data.get('analysis_date', datetime.now().isoformat())
                 years_analyzed = json.dumps(analysis_data.get('years_analyzed', []))
                 files_processed = analysis_data.get('files_processed', 0)
                 
-                # Extract business strategy
-                business_strategy = analysis_data.get('business_strategy', {})
-                business_strategy_dominant = business_strategy.get('dominant', '')
-                business_strategy_secondary = business_strategy.get('secondary', '')
-                business_strategy_reasoning = business_strategy.get('reasoning', '')
+                # Extract business strategy using new method
+                business_dominant, business_secondary, business_reasoning = self.extract_business_strategy(analysis_data)
                 
-                # Extract risk strategy
-                risk_strategy = analysis_data.get('risk_strategy', {})
-                risk_strategy_dominant = risk_strategy.get('dominant', '')
-                risk_strategy_secondary = risk_strategy.get('secondary', '')
-                risk_strategy_reasoning = risk_strategy.get('reasoning', '')
+                # Extract risk strategy using new method
+                risk_dominant, risk_secondary, risk_reasoning = self.extract_risk_strategy(analysis_data)
                 
-                analysis_type = analysis_data.get('analysis_type', 'unknown')
+                # Log what we extracted for debugging
+                logger.info(f"💾 Storing analysis for {company_number}:")
+                logger.info(f"   Business Strategy: {business_dominant}")
+                logger.info(f"   Risk Strategy: {risk_dominant}")
+                
+                analysis_type = analysis_data.get('analysis_type', 'strategic_archetype')
                 confidence_level = analysis_data.get('confidence_level', 'medium')
                 status = analysis_data.get('status', 'completed')
                 raw_response = json.dumps(analysis_data)
                 
                 with self._get_connection() as conn:
-                    # Store in analysis_results table (primary table)
+                    # Store in analysis_results table (primary table) with FIXED SQL
                     cursor = conn.execute('''
                         INSERT INTO analysis_results (
                             company_number, company_name, analysis_date, years_analyzed,
@@ -212,22 +266,103 @@ class AnalysisDatabase:
                             risk_strategy_reasoning, analysis_type, confidence_level, status, raw_response
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (
-                        company_number, company_name, analysis_date, years_analyzed,
-                        files_processed, business_strategy_dominant, risk_strategy_dominant,
-                        business_strategy_dominant, business_strategy_secondary,
-                        business_strategy_reasoning, risk_strategy_dominant, risk_strategy_secondary,
-                        risk_strategy_reasoning, analysis_type, confidence_level, status, raw_response
+                        company_number, 
+                        company_name, 
+                        analysis_date, 
+                        years_analyzed,
+                        files_processed, 
+                        json.dumps(analysis_data.get('business_strategy', {})),  # Full business strategy object
+                        json.dumps(analysis_data.get('risk_strategy', {})),      # Full risk strategy object
+                        business_dominant,    # FIXED: Proper business dominant
+                        business_secondary,   # FIXED: Proper business secondary
+                        business_reasoning,   # FIXED: Proper business reasoning
+                        risk_dominant,        # FIXED: Proper risk dominant
+                        risk_secondary,       # FIXED: Proper risk secondary
+                        risk_reasoning,       # FIXED: Proper risk reasoning
+                        analysis_type, 
+                        confidence_level, 
+                        status, 
+                        raw_response
                     ))
                     
                     record_id = cursor.lastrowid
                     conn.commit()
                     
-                    logger.info(f"Analysis stored successfully with ID: {record_id}")
+                    logger.info(f"✅ Analysis stored successfully with ID: {record_id}")
+                    logger.info(f"   Saved business_strategy_dominant: {business_dominant}")
+                    logger.info(f"   Saved risk_strategy_dominant: {risk_dominant}")
                     return record_id
                     
             except Exception as e:
-                logger.error(f"Error storing analysis result: {e}")
+                logger.error(f"❌ Error storing analysis result: {e}")
+                logger.error(f"   Analysis data keys: {list(analysis_data.keys())}")
                 raise
+    
+    def update_existing_null_records(self) -> int:
+        """
+        Update existing records that have null business_strategy_dominant and risk_strategy_dominant
+        
+        Returns:
+            int: Number of records updated
+        """
+        with self.lock:
+            try:
+                with self._get_connection() as conn:
+                    # Get records with null summary fields
+                    rows = conn.execute('''
+                        SELECT id, raw_response, company_number 
+                        FROM analysis_results 
+                        WHERE business_strategy_dominant IS NULL OR risk_strategy_dominant IS NULL
+                    ''').fetchall()
+                    
+                    updated_count = 0
+                    
+                    for row in rows:
+                        record_id, raw_response, company_number = row
+                        
+                        try:
+                            # Parse raw_response
+                            if isinstance(raw_response, str):
+                                analysis_data = json.loads(raw_response)
+                            else:
+                                analysis_data = raw_response
+                            
+                            # Extract strategies
+                            business_dominant, business_secondary, business_reasoning = self.extract_business_strategy(analysis_data)
+                            risk_dominant, risk_secondary, risk_reasoning = self.extract_risk_strategy(analysis_data)
+                            
+                            logger.info(f"🔧 Updating record {record_id} for company {company_number}:")
+                            logger.info(f"   Business: {business_dominant}")
+                            logger.info(f"   Risk: {risk_dominant}")
+                            
+                            # Update the record
+                            conn.execute('''
+                                UPDATE analysis_results 
+                                SET business_strategy_dominant = ?, 
+                                    business_strategy_secondary = ?,
+                                    business_strategy_reasoning = ?,
+                                    risk_strategy_dominant = ?,
+                                    risk_strategy_secondary = ?,
+                                    risk_strategy_reasoning = ?
+                                WHERE id = ?
+                            ''', (
+                                business_dominant, business_secondary, business_reasoning,
+                                risk_dominant, risk_secondary, risk_reasoning,
+                                record_id
+                            ))
+                            
+                            updated_count += 1
+                            
+                        except Exception as e:
+                            logger.error(f"❌ Error updating record {record_id}: {e}")
+                    
+                    conn.commit()
+                    logger.info(f"✅ Successfully updated {updated_count} records")
+                    return updated_count
+                    
+            except Exception as e:
+                logger.error(f"❌ Error updating existing records: {e}")
+                return 0
     
     def get_analysis_by_company(self, company_number: str) -> List[Dict[str, Any]]:
         """
