@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AI Analyzer - Enhanced Version with Multi-File Analysis Support
+AI Analyzer - Complete Enhanced Version with Multi-File Analysis Support
 Ensures all files are properly analyzed and taken into account for final archetype classification
 """
 
@@ -309,7 +309,7 @@ class AIArchetypeAnalyzer:
 
     def _synthesize_multiple_analyses(self, individual_analyses: List[Dict[str, Any]], label: str) -> Dict[str, Any]:
         """
-        Synthesize results from multiple individual file analyses
+        Synthesize results from multiple individual file analyses - ENHANCED to include full reasoning
         
         Args:
             individual_analyses: List of analysis results from individual files
@@ -331,10 +331,11 @@ class AIArchetypeAnalyzer:
             if secondary:
                 secondary_counts[secondary] = secondary_counts.get(secondary, 0) + 1
             
-            # Collect reasoning with file context
+            # Collect FULL reasoning with file context (not truncated)
             file_name = analysis.get('source_file', 'Unknown file')
             reasoning = analysis.get('reasoning', '')
             if reasoning:
+                # Include the full reasoning, not just a snippet
                 all_reasoning.append(f"[{file_name}] {reasoning}")
         
         # Determine final dominant archetype (most frequent)
@@ -354,7 +355,7 @@ class AIArchetypeAnalyzer:
         dominant_frequency = dominant_counts.get(final_dominant, 0)
         confidence = dominant_frequency / total_files
         
-        # Create comprehensive reasoning
+        # Create comprehensive reasoning that includes ALL evidence
         synthesized_reasoning = f"Multi-file analysis across {total_files} documents shows {final_dominant} as the dominant archetype "
         synthesized_reasoning += f"(appears in {dominant_frequency}/{total_files} files, {confidence:.0%} confidence). "
         
@@ -362,9 +363,9 @@ class AIArchetypeAnalyzer:
             secondary_frequency = secondary_counts.get(final_secondary, 0)
             synthesized_reasoning += f"Secondary archetype {final_secondary} identified in {secondary_frequency} files. "
         
-        # Add individual file insights
+        # Add ALL reasoning from individual files (not just top 3) - THIS IS THE KEY FIX
         if len(all_reasoning) > 0:
-            synthesized_reasoning += "Key evidence: " + "; ".join(all_reasoning[:3])  # Top 3 pieces of evidence
+            synthesized_reasoning += "Key evidence: " + "; ".join(all_reasoning)  # Include ALL evidence
         
         result = {
             "dominant": final_dominant,
@@ -573,334 +574,4 @@ CONTENT TO ANALYSE:
             content, self.business_archetypes, "Business Strategy"
         )
         
-        risk_analysis = self._fallback_single_archetype_analysis(
-            content, self.risk_archetypes, "Risk Strategy"
-        )
-        
-        return self._create_success_result(
-            analysis_type="pattern_multi_file_classification" if extracted_content and len(extracted_content) > 1 else "pattern_archetype_classification",
-            company_name=company_name,
-            company_number=company_number,
-            business_strategy_archetypes=business_analysis,
-            risk_strategy_archetypes=risk_analysis,
-            files_analyzed=len(extracted_content) if extracted_content else 1,
-            total_content_chars=len(content)
-        )
-
-    def _fallback_single_archetype_analysis(self, content: str, archetype_dict: Dict[str, str], label: str) -> Dict[str, str]:
-        """Enhanced pattern-based analysis for single category"""
-        content_lower = content.lower()
-        archetype_scores = {}
-        
-        # Enhanced keyword patterns for each archetype
-        if label == "Business Strategy":
-            keyword_patterns = {
-                'Disciplined Specialist Growth': [
-                    'specialist', 'niche', 'underwriting', 'opportunistic', 'recycling',
-                    'specialist.*mortgage', 'specialist.*lending', 'niche.*market',
-                    'balanced.*growth', 'disciplined.*approach', 'specialist.*knowledge'
-                ],
-                'Balance-Sheet Steward': [
-                    'capital.*strength', 'prudent', 'conservative', 'steward', 'membership',
-                    'capital.*preservation', 'regulatory.*capital', 'strong.*capital',
-                    'building.*society', 'mutual', 'members.*interests'
-                ],
-                'Service-Driven Differentiator': [
-                    'customer.*experience', 'service.*quality', 'advice', 'client.*experience',
-                    'customer.*service', 'personalised.*service', 'tailored.*solutions',
-                    'relationship.*management', 'advisory.*services'
-                ],
-                'Cost-Leadership Operator': [
-                    'efficiency', 'cost.*base', 'lean', 'digital.*self.*service',
-                    'operational.*efficiency', 'cost.*reduction', 'streamlined.*operations',
-                    'digital.*transformation', 'automation'
-                ],
-                'Expert Niche Leader': [
-                    'expertise', 'micro.*segment', 'deep.*knowledge', 'specialist.*knowledge',
-                    'niche.*expertise', 'specialist.*skills', 'deep.*understanding',
-                    'focused.*expertise', 'specialist.*team'
-                ],
-                'Tech-Productivity Accelerator': [
-                    'automation', 'technology', 'digital', 'efficiency.*gains',
-                    'technological.*innovation', 'digital.*platform', 'automated.*processes',
-                    'tech.*enabled', 'digital.*solutions'
-                ],
-                'Yield-Hunting': [
-                    'high.*margin', 'premium.*pricing', 'yield', 'margin.*enhancement',
-                    'pricing.*discipline', 'risk.*adjusted.*returns', 'margin.*optimization'
-                ],
-                'Asset-Velocity Maximiser': [
-                    'rapid.*origination', 'turnover', 'velocity', 'quick.*processing',
-                    'fast.*turnaround', 'efficient.*processing', 'rapid.*deployment'
-                ],
-                'Regulatory Shelter Occupant': [
-                    'regulatory.*protection', 'franchise.*protection', 'regulatory.*advantage',
-                    'protected.*position', 'regulatory.*framework'
-                ],
-                'Regulator-Mandated Remediation': [
-                    'remediation', 'regulatory.*action', 'enforcement', 'improvement.*programme',
-                    'compliance.*programme', 'regulatory.*requirements', 'corrective.*action'
-                ]
-            }
-        else:  # Risk Strategy
-            keyword_patterns = {
-                'Rules-Led Operator': [
-                    'compliance', 'regulatory.*requirements', 'procedures', 'controls',
-                    'policies.*procedures', 'compliance.*framework', 'regulatory.*compliance',
-                    'control.*framework', 'governance.*framework'
-                ],
-                'Risk-First Conservative': [
-                    'capital.*preservation', 'regulatory.*compliance', 'resilience', 'conservative',
-                    'prudent.*approach', 'risk.*averse', 'conservative.*strategy',
-                    'capital.*strength', 'stability'
-                ],
-                'Resilience-Focused Architect': [
-                    'operational.*continuity', 'stress.*testing', 'scenario.*planning', 'crisis',
-                    'business.*continuity', 'resilience.*planning', 'disaster.*recovery',
-                    'operational.*resilience', 'contingency.*planning'
-                ],
-                'Strategic Risk-Taker': [
-                    'risk.*appetite', 'growth.*oriented', 'calculated.*risk', 'strategic.*risk',
-                    'risk.*taking', 'growth.*strategy', 'expansion.*strategy',
-                    'market.*opportunity', 'strategic.*opportunity'
-                ],
-                'Embedded Risk Partner': [
-                    'embedded.*risk', 'collaborative', 'integrated.*risk', 'risk.*partnership',
-                    'business.*partnering', 'integrated.*approach', 'collaborative.*approach'
-                ],
-                'Reputation-First Shield': [
-                    'reputation', 'reputational.*risk', 'brand.*protection', 'stakeholder.*trust',
-                    'reputation.*management', 'brand.*value', 'public.*perception'
-                ],
-                'Control-Lag Follower': [
-                    'rapid.*expansion', 'scaling.*operations', 'growth.*ahead.*controls',
-                    'operational.*scaling', 'expansion.*challenges'
-                ],
-                'Reactive Remediator': [
-                    'reactive.*approach', 'event.*driven', 'remedial.*action', 'corrective.*measures',
-                    'response.*issues', 'addressing.*concerns'
-                ],
-                'Quant-Control Enthusiast': [
-                    'data.*analytics', 'quantitative.*analysis', 'automated.*controls',
-                    'predictive.*analytics', 'data.*driven', 'analytics.*platform'
-                ],
-                'Mission-Driven Prudence': [
-                    'stakeholder.*protection', 'community', 'social.*licence', 'mission',
-                    'social.*responsibility', 'stakeholder.*interests', 'community.*focus',
-                    'ethical.*approach', 'responsible.*business'
-                ]
-            }
-        
-        # Enhanced scoring with weighted patterns
-        for archetype, patterns in keyword_patterns.items():
-            score = 0
-            for pattern in patterns:
-                matches = len(re.findall(pattern, content_lower))
-                # Weight longer, more specific patterns higher
-                weight = len(pattern.split('.')) * 2 if '.*' in pattern else 1
-                score += matches * weight
-            archetype_scores[archetype] = score
-        
-        # Select top archetypes
-        sorted_archetypes = sorted(archetype_scores.items(), key=lambda x: x[1], reverse=True)
-        
-        # Default fallbacks based on common patterns
-        if label == "Business Strategy":
-            default_archetype = "Balance-Sheet Steward"
-        else:
-            default_archetype = "Risk-First Conservative"
-        
-        dominant = sorted_archetypes[0][0] if sorted_archetypes and sorted_archetypes[0][1] > 0 else default_archetype
-        secondary = sorted_archetypes[1][0] if len(sorted_archetypes) > 1 and sorted_archetypes[1][1] > 0 else ""
-        
-        # Enhanced reasoning with specific evidence
-        reasoning = f"Pattern-based analysis identified {dominant} as the dominant archetype"
-        if secondary:
-            reasoning += f" with {secondary} as secondary archetype"
-        
-        # Add scoring details
-        top_scores = dict(sorted_archetypes[:3])
-        reasoning += f" based on keyword frequency analysis. Top archetype scores: {top_scores}"
-        
-        return {
-            "dominant": dominant,
-            "secondary": secondary,
-            "reasoning": reasoning,
-            "pattern_scores": dict(sorted_archetypes[:5])  # Top 5 scores for debugging
-        }
-
-    def _create_success_result(self, analysis_type: str, company_name: str, 
-                             company_number: str, business_strategy_archetypes: Dict[str, str],
-                             risk_strategy_archetypes: Dict[str, str], 
-                             model_used: str = None, files_analyzed: int = 1,
-                             total_content_chars: int = 0) -> Dict[str, Any]:
-        """Create enhanced success result with multi-file information"""
-        result = {
-            "success": True,
-            "analysis_type": analysis_type,
-            "company_name": company_name,
-            "company_number": company_number,
-            "business_strategy_archetypes": business_strategy_archetypes,
-            "risk_strategy_archetypes": risk_strategy_archetypes,
-            "timestamp": datetime.now().isoformat(),
-            "analysis_metadata": {
-                "files_analyzed": files_analyzed,
-                "total_content_chars": total_content_chars,
-                "analysis_comprehensive": files_analyzed > 1,
-                "content_utilization": "multi_file" if files_analyzed > 1 else "single_content"
-            }
-        }
-        
-        if model_used:
-            result["model_used"] = model_used
-        
-        # Add confidence indicators
-        if "multi_file" in analysis_type:
-            result["analysis_metadata"]["confidence_level"] = "high" if files_analyzed >= 3 else "medium"
-        else:
-            result["analysis_metadata"]["confidence_level"] = "medium"
-            
-        return result
-
-    def _create_error_result(self, error_msg: str) -> Dict[str, Any]:
-        """Create error result"""
-        return {
-            "success": False,
-            "error": error_msg,
-            "analysis_type": "error",
-            "timestamp": datetime.now().isoformat()
-        }
-
-    def get_analysis_summary(self, analysis_result: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Generate a summary of the analysis results
-        
-        Args:
-            analysis_result: Result from analyze_archetypes
-            
-        Returns:
-            Summary information
-        """
-        try:
-            business_archetypes = analysis_result.get('business_strategy_archetypes', {})
-            risk_archetypes = analysis_result.get('risk_strategy_archetypes', {})
-            metadata = analysis_result.get('analysis_metadata', {})
-            
-            summary = {
-                "company_name": analysis_result.get('company_name', 'Unknown'),
-                "company_number": analysis_result.get('company_number', 'Unknown'),
-                "analysis_type": analysis_result.get('analysis_type', 'unknown'),
-                "timestamp": analysis_result.get('timestamp', 'Unknown'),
-                "archetypes": {
-                    "business_strategy": {
-                        "dominant": business_archetypes.get('dominant', 'Unknown'),
-                        "secondary": business_archetypes.get('secondary', 'None'),
-                        "confidence": business_archetypes.get('confidence_score', 0)
-                    },
-                    "risk_strategy": {
-                        "dominant": risk_archetypes.get('dominant', 'Unknown'),
-                        "secondary": risk_archetypes.get('secondary', 'None'),
-                        "confidence": risk_archetypes.get('confidence_score', 0)
-                    }
-                },
-                "analysis_quality": {
-                    "files_analyzed": metadata.get('files_analyzed', 1),
-                    "comprehensive": metadata.get('analysis_comprehensive', False),
-                    "confidence_level": metadata.get('confidence_level', 'medium'),
-                    "content_chars": metadata.get('total_content_chars', 0)
-                },
-                "success": analysis_result.get('success', False)
-            }
-            
-            return summary
-            
-        except Exception as e:
-            logger.error(f"Error generating analysis summary: {e}")
-            return {"error": str(e), "success": False}
-
-# Legacy compatibility function
-def analyze_company_archetypes(content: str, company_name: str, company_number: str) -> Dict[str, Any]:
-    """
-    Legacy compatibility function for existing code
-    
-    Args:
-        content: Company content to analyze
-        company_name: Company name
-        company_number: Company number
-        
-    Returns:
-        Analysis results
-    """
-    analyzer = AIArchetypeAnalyzer()
-    return analyzer.analyze_archetypes(content, company_name, company_number)
-
-# Enhanced function for multi-file analysis
-def analyze_company_archetypes_multi_file(content: str, company_name: str, company_number: str, 
-                                        extracted_content: List[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """
-    Enhanced function for multi-file archetype analysis
-    
-    Args:
-        content: Combined content (for backward compatibility)
-        company_name: Company name
-        company_number: Company number
-        extracted_content: List of individual file content data
-        
-    Returns:
-        Enhanced analysis results
-    """
-    analyzer = AIArchetypeAnalyzer()
-    return analyzer.analyze_archetypes(content, company_name, company_number, extracted_content)
-
-if __name__ == "__main__":
-    # Test the enhanced analyzer
-    print("Testing Enhanced AI Archetype Analyzer...")
-    
-    # Test data
-    test_content = """
-    STRATEGIC REPORT
-    
-    Together Personal Finance Limited is a specialist mortgage lender focusing on providing 
-    secured loans tailored to individual customer needs. Our strategy emphasizes responsible 
-    lending to profitable segments of our markets while maintaining strong capital ratios.
-    
-    RISK MANAGEMENT
-    
-    Our risk management approach prioritizes regulatory compliance and capital preservation. 
-    We maintain conservative lending criteria and robust underwriting standards to ensure 
-    operational resilience.
-    """
-    
-    test_files = [
-        {
-            'filename': 'annual_report_2023.pdf',
-            'content': test_content,
-            'date': '2023-12-31'
-        },
-        {
-            'filename': 'annual_report_2022.pdf', 
-            'content': test_content.replace('2023', '2022'),
-            'date': '2022-12-31'
-        }
-    ]
-    
-    # Test multi-file analysis
-    result = analyze_company_archetypes_multi_file(
-        content=test_content,
-        company_name="Together Personal Finance Limited",
-        company_number="02613335",
-        extracted_content=test_files
-    )
-    
-    print(f"Analysis Type: {result.get('analysis_type')}")
-    print(f"Success: {result.get('success')}")
-    print(f"Business Strategy: {result.get('business_strategy_archetypes', {}).get('dominant')}")
-    print(f"Risk Strategy: {result.get('risk_strategy_archetypes', {}).get('dominant')}")
-    print(f"Files Analyzed: {result.get('analysis_metadata', {}).get('files_analyzed')}")
-    
-    # Test summary generation
-    analyzer = AIArchetypeAnalyzer()
-    summary = analyzer.get_analysis_summary(result)
-    print(f"Analysis Summary: {summary}")
-    
-    print("Enhanced AI Archetype Analyzer test completed.")
+        risk_
