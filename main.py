@@ -4,6 +4,7 @@ Flask API for Strategic Analysis Tool with Database Integration
 Fixed for Flask 2.3+ compatibility and Gunicorn deployment
 Updated for ExecutiveAIAnalyzer (Board-Grade Analysis)
 Enhanced Lookup API - REVERTED TO SIMPLE WORKING VERSION
+ADDED: Comprehensive debug logging for AI analyzer results
 """
 
 import time
@@ -515,7 +516,7 @@ def create_app():
 
     @app.route('/api/analyze', methods=['POST'])
     def analyze_company():
-        """Enhanced main analysis endpoint with board-grade analysis"""
+        """Enhanced main analysis endpoint with board-grade analysis and DEBUG LOGGING"""
         
         # Check if critical components are available
         required_components = ['CompaniesHouseClient', 'ContentProcessor', 'ExecutiveAIAnalyzer']
@@ -643,6 +644,46 @@ def create_app():
             # Prepare enhanced response data with board-grade insights
             board_analysis = analysis_results.get('board_analysis', {})
             
+            # ***** CRITICAL DEBUG LOGGING SECTION *****
+            logger.info(f"🔍 AI ANALYZER RESULT KEYS: {list(board_analysis.keys())}")
+            logger.info(f"🔍 BUSINESS STRATEGY: {board_analysis.get('business_strategy', 'MISSING')}")
+            logger.info(f"🔍 RISK STRATEGY: {board_analysis.get('risk_strategy', 'MISSING')}")
+            
+            # If business_strategy exists, log its contents
+            if 'business_strategy' in board_analysis:
+                bs = board_analysis['business_strategy']
+                logger.info(f"🔍 BUSINESS STRATEGY TYPE: {type(bs)}")
+                if isinstance(bs, dict):
+                    logger.info(f"🔍 BUSINESS STRATEGY KEYS: {list(bs.keys())}")
+                    logger.info(f"🔍 BUSINESS DOMINANT: {bs.get('dominant', 'MISSING')}")
+                    dominant_reasoning = bs.get('dominant_reasoning', bs.get('dominant_rationale', 'MISSING'))
+                    logger.info(f"🔍 BUSINESS REASONING: {str(dominant_reasoning)[:100]}...")
+                else:
+                    logger.info(f"🔍 BUSINESS STRATEGY NOT A DICT: {str(bs)[:200]}")
+            
+            # If risk_strategy exists, log its contents  
+            if 'risk_strategy' in board_analysis:
+                rs = board_analysis['risk_strategy']
+                logger.info(f"🔍 RISK STRATEGY TYPE: {type(rs)}")
+                if isinstance(rs, dict):
+                    logger.info(f"🔍 RISK STRATEGY KEYS: {list(rs.keys())}")
+                    logger.info(f"🔍 RISK DOMINANT: {rs.get('dominant', 'MISSING')}")
+                    dominant_reasoning = rs.get('dominant_reasoning', rs.get('dominant_rationale', 'MISSING'))
+                    logger.info(f"🔍 RISK REASONING: {str(dominant_reasoning)[:100]}...")
+                else:
+                    logger.info(f"🔍 RISK STRATEGY NOT A DICT: {str(rs)[:200]}")
+            
+            # Log other important fields
+            logger.info(f"🔍 SWOT ANALYSIS: {board_analysis.get('swot_analysis', 'MISSING')}")
+            logger.info(f"🔍 ANALYSIS METADATA: {board_analysis.get('analysis_metadata', 'MISSING')}")
+            
+            # Before storing in database, add this:
+            logger.info(f"🔍 ABOUT TO STORE IN DATABASE:")
+            logger.info(f"🔍 BOARD ANALYSIS TYPE: {type(board_analysis)}")
+            logger.info(f"🔍 BOARD ANALYSIS KEYS: {list(board_analysis.keys())}")
+            logger.info(f"🔍 FULL BOARD ANALYSIS: {str(board_analysis)[:1000]}...")
+            # ***** END DEBUG LOGGING SECTION *****
+            
             response_data = {
                 'success': True,
                 'company_number': company_number,
@@ -659,9 +700,10 @@ def create_app():
                 'executive_dashboard': board_analysis.get('executive_dashboard', {}),
                 'board_presentation_summary': board_analysis.get('board_presentation_summary', {}),
                 
-                # Legacy compatibility fields
-                'business_strategy': board_analysis.get('business_strategy_analysis', {}),
-                'risk_strategy': board_analysis.get('risk_strategy_analysis', {}),
+                # NEW: Direct structured report fields
+                'business_strategy': board_analysis.get('business_strategy', {}),
+                'risk_strategy': board_analysis.get('risk_strategy', {}),
+                'swot_analysis': board_analysis.get('swot_analysis', {}),
                 
                 'analysis_date': datetime.now().isoformat(),
                 'analysis_type': board_analysis.get('analysis_metadata', {}).get('analysis_type', 'board_grade_executive'),
@@ -1486,6 +1528,7 @@ if __name__ == '__main__':
     logger.info("   ✅ Component status monitoring and health checks")
     logger.info("   ✅ Memory usage monitoring and optimization")
     logger.info("   ✅ Parallel PDF processing with fallback")
+    logger.info("   ✅ COMPREHENSIVE DEBUG LOGGING for AI analyzer")
     logger.info("=" * 70)
     logger.info(f"📊 Configuration:")
     logger.info(f"   - Max parallel workers: {MAX_PARALLEL_WORKERS}")
