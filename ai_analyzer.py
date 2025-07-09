@@ -264,25 +264,31 @@ Format your response as JSON with keys: business_primary, business_reasoning, ri
             if json_match:
                 ai_data = json.loads(json_match.group())
                 
+                # Safely get values with fallbacks
+                business_primary = ai_data.get('business_primary', 'Disciplined Specialist Growth')
+                business_secondary = ai_data.get('business_secondary', 'Balance-Sheet Steward')
+                risk_primary = ai_data.get('risk_primary', 'Risk-First Conservative')
+                risk_secondary = ai_data.get('risk_secondary', 'Rules-Led Operator')
+                
                 return {
                     'business_strategy_archetypes': {
-                        'dominant': ai_data.get('business_primary', 'Disciplined Specialist Growth'),
-                        'secondary': ai_data.get('business_secondary', 'Balance-Sheet Steward'),
+                        'dominant': business_primary,
+                        'secondary': business_secondary,
                         'reasoning': ai_data.get('business_reasoning', 'AI-generated analysis'),
-                        'definition': self.business_archetypes.get(ai_data.get('business_primary', 'Disciplined Specialist Growth'), "Definition not available"),
-                        'secondary_definition': self.business_archetypes.get(ai_data.get('business_secondary', 'Balance-Sheet Steward'), "Definition not available")
+                        'definition': self.business_archetypes.get(business_primary, "Definition not available"),
+                        'secondary_definition': self.business_archetypes.get(business_secondary, "Definition not available")
                     },
                     'risk_strategy_archetypes': {
-                        'dominant': ai_data.get('risk_primary', 'Risk-First Conservative'),
-                        'secondary': ai_data.get('risk_secondary', 'Rules-Led Operator'), 
+                        'dominant': risk_primary,
+                        'secondary': risk_secondary, 
                         'reasoning': ai_data.get('risk_reasoning', 'AI-generated analysis'),
-                        'definition': self.risk_archetypes.get(ai_data.get('risk_primary', 'Risk-First Conservative'), "Definition not available"),
-                        'secondary_definition': self.risk_archetypes.get(ai_data.get('risk_secondary', 'Rules-Led Operator'), "Definition not available")
+                        'definition': self.risk_archetypes.get(risk_primary, "Definition not available"),
+                        'secondary_definition': self.risk_archetypes.get(risk_secondary, "Definition not available")
                     },
                     'analysis_type': f'ai_{client_type}',
                     'confidence_level': ai_data.get('confidence', 'medium'),
                     'files_analyzed': len(extracted_content) if extracted_content else 1,
-                    'ai_raw_response': response_text,
+                    'ai_raw_response': response_text[:500],  # Truncate to avoid issues
                     'archetype_definitions': {
                         'business_archetypes': self.business_archetypes,
                         'risk_archetypes': self.risk_archetypes
@@ -294,22 +300,25 @@ Format your response as JSON with keys: business_primary, business_reasoning, ri
                 
         except Exception as e:
             logger.error(f"Error parsing AI response: {e}")
-            return self._get_default_analysis()
+            logger.info("Using fallback text parsing")
+            return self._parse_text_response(response_text, client_type, extracted_content)
     
     def _parse_text_response(self, response_text: str, client_type: str, extracted_content: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
         """Parse non-JSON AI response"""
         # Simple text parsing for business and risk strategies
-        business_archetype = "Growth"  # Default
-        risk_archetype = "Balanced"    # Default
+        business_archetype = "Disciplined Specialist Growth"  # Default
+        risk_archetype = "Risk-First Conservative"    # Default
         
-        # Look for mentioned archetypes
+        # Look for mentioned archetypes in response
         response_lower = response_text.lower()
         
+        # Check for business archetypes
         for archetype in self.business_archetypes.keys():
             if archetype.lower() in response_lower:
                 business_archetype = archetype
                 break
         
+        # Check for risk archetypes
         for archetype in self.risk_archetypes.keys():
             if archetype.lower() in response_lower:
                 risk_archetype = archetype
@@ -318,18 +327,26 @@ Format your response as JSON with keys: business_primary, business_reasoning, ri
         return {
             'business_strategy_archetypes': {
                 'dominant': business_archetype,
-                'secondary': 'Innovation',
-                'reasoning': f'AI analysis suggests {business_archetype} strategy based on document content.'
+                'secondary': 'Balance-Sheet Steward',
+                'reasoning': f'AI analysis suggests {business_archetype} strategy based on document content.',
+                'definition': self.business_archetypes.get(business_archetype, "Definition not available"),
+                'secondary_definition': self.business_archetypes.get('Balance-Sheet Steward', "Definition not available")
             },
             'risk_strategy_archetypes': {
                 'dominant': risk_archetype,
-                'secondary': 'Conservative',
-                'reasoning': f'Risk management approach appears to be {risk_archetype} based on analysis.'
+                'secondary': 'Rules-Led Operator',
+                'reasoning': f'Risk management approach appears to be {risk_archetype} based on analysis.',
+                'definition': self.risk_archetypes.get(risk_archetype, "Definition not available"),
+                'secondary_definition': self.risk_archetypes.get('Rules-Led Operator', "Definition not available")
             },
             'analysis_type': f'ai_{client_type}_text',
             'confidence_level': 'medium',
             'files_analyzed': len(extracted_content) if extracted_content else 1,
-            'ai_raw_response': response_text
+            'ai_raw_response': response_text[:500],  # Truncate for safety
+            'archetype_definitions': {
+                'business_archetypes': self.business_archetypes,
+                'risk_archetypes': self.risk_archetypes
+            }
         }
     
     def _calculate_pattern_score(self, content: str, archetype: str) -> float:
