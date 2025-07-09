@@ -173,17 +173,20 @@ class AnalysisDatabase:
         Returns:
             tuple: (dominant, secondary, reasoning)
         """
-        # Try different possible locations for business strategy
-        if 'business_strategy_analysis' in analysis_data:
-            strategy = analysis_data['business_strategy_analysis']
-            dominant = strategy.get('dominant_archetype') or strategy.get('dominant')
-            secondary = strategy.get('secondary_archetype') or strategy.get('secondary')
-            reasoning = strategy.get('strategic_rationale') or strategy.get('reasoning')
-            return dominant, secondary, reasoning
-        
-        elif 'business_strategy' in analysis_data:
+        # NEW: Try structured report format first
+        if 'business_strategy' in analysis_data:
             strategy = analysis_data['business_strategy']
             if isinstance(strategy, dict):
+                # Structured report format
+                dominant = strategy.get('dominant')
+                secondary = strategy.get('secondary') 
+                reasoning = strategy.get('dominant_reasoning') or strategy.get('dominant_rationale')
+                
+                if dominant:  # If we found the new format, return it
+                    logger.info(f"🔍 Found business strategy in structured format: {dominant}")
+                    return dominant, secondary, reasoning
+                
+                # Fallback to old format
                 dominant = strategy.get('dominant_archetype') or strategy.get('dominant')
                 secondary = strategy.get('secondary_archetype') or strategy.get('secondary')
                 reasoning = strategy.get('strategic_rationale') or strategy.get('reasoning')
@@ -191,6 +194,15 @@ class AnalysisDatabase:
             elif isinstance(strategy, str):
                 return strategy, None, None
         
+        # Legacy format support
+        elif 'business_strategy_analysis' in analysis_data:
+            strategy = analysis_data['business_strategy_analysis']
+            dominant = strategy.get('dominant_archetype') or strategy.get('dominant')
+            secondary = strategy.get('secondary_archetype') or strategy.get('secondary')
+            reasoning = strategy.get('strategic_rationale') or strategy.get('reasoning')
+            return dominant, secondary, reasoning
+        
+        logger.warning("❌ No business strategy found in analysis data")
         return None, None, None
     
     def extract_risk_strategy(self, analysis_data: Dict[str, Any]) -> tuple:
@@ -200,17 +212,20 @@ class AnalysisDatabase:
         Returns:
             tuple: (dominant, secondary, reasoning)
         """
-        # Try different possible locations for risk strategy
-        if 'risk_strategy_analysis' in analysis_data:
-            strategy = analysis_data['risk_strategy_analysis']
-            dominant = strategy.get('dominant_archetype') or strategy.get('dominant')
-            secondary = strategy.get('secondary_archetype') or strategy.get('secondary')
-            reasoning = strategy.get('risk_rationale') or strategy.get('reasoning')
-            return dominant, secondary, reasoning
-        
-        elif 'risk_strategy' in analysis_data:
+        # NEW: Try structured report format first
+        if 'risk_strategy' in analysis_data:
             strategy = analysis_data['risk_strategy']
             if isinstance(strategy, dict):
+                # Structured report format
+                dominant = strategy.get('dominant')
+                secondary = strategy.get('secondary')
+                reasoning = strategy.get('dominant_reasoning') or strategy.get('dominant_rationale')
+                
+                if dominant:  # If we found the new format, return it
+                    logger.info(f"🔍 Found risk strategy in structured format: {dominant}")
+                    return dominant, secondary, reasoning
+                
+                # Fallback to old format
                 dominant = strategy.get('dominant_archetype') or strategy.get('dominant')
                 secondary = strategy.get('secondary_archetype') or strategy.get('secondary')
                 reasoning = strategy.get('risk_rationale') or strategy.get('reasoning')
@@ -218,6 +233,15 @@ class AnalysisDatabase:
             elif isinstance(strategy, str):
                 return strategy, None, None
         
+        # Legacy format support
+        elif 'risk_strategy_analysis' in analysis_data:
+            strategy = analysis_data['risk_strategy_analysis']
+            dominant = strategy.get('dominant_archetype') or strategy.get('dominant')
+            secondary = strategy.get('secondary_archetype') or strategy.get('secondary')
+            reasoning = strategy.get('risk_rationale') or strategy.get('reasoning')
+            return dominant, secondary, reasoning
+        
+        logger.warning("❌ No risk strategy found in analysis data")
         return None, None, None
     
     def store_analysis_result(self, analysis_data: Dict[str, Any]) -> int:
