@@ -180,7 +180,9 @@ class AnalysisDatabase:
                 # Structured report format
                 dominant = strategy.get('dominant')
                 secondary = strategy.get('secondary') 
-                reasoning = strategy.get('dominant_reasoning') or strategy.get('dominant_rationale')
+                reasoning = (strategy.get('dominant_reasoning') or 
+                           strategy.get('dominant_rationale') or 
+                           strategy.get('reasoning'))
                 
                 if dominant:  # If we found the new format, return it
                     logger.info(f"🔍 Found business strategy in structured format: {dominant}")
@@ -219,7 +221,9 @@ class AnalysisDatabase:
                 # Structured report format
                 dominant = strategy.get('dominant')
                 secondary = strategy.get('secondary')
-                reasoning = strategy.get('dominant_reasoning') or strategy.get('dominant_rationale')
+                reasoning = (strategy.get('dominant_reasoning') or 
+                           strategy.get('dominant_rationale') or 
+                           strategy.get('reasoning'))
                 
                 if dominant:  # If we found the new format, return it
                     logger.info(f"🔍 Found risk strategy in structured format: {dominant}")
@@ -256,6 +260,16 @@ class AnalysisDatabase:
         """
         with self.lock:
             try:
+                # DEBUG: Log the complete analysis data structure
+                logger.info(f"🔍 FULL ANALYSIS DATA STRUCTURE:")
+                logger.info(f"   Top-level keys: {list(analysis_data.keys())}")
+                
+                for key, value in analysis_data.items():
+                    if isinstance(value, dict):
+                        logger.info(f"   {key} (dict): {list(value.keys())}")
+                    else:
+                        logger.info(f"   {key}: {type(value).__name__} - {str(value)[:100]}...")
+                
                 # Extract basic data
                 company_number = analysis_data.get('company_number', '')
                 company_name = analysis_data.get('company_name', '')
@@ -273,6 +287,8 @@ class AnalysisDatabase:
                 logger.info(f"💾 Storing analysis for {company_number}:")
                 logger.info(f"   Business Strategy: {business_dominant}")
                 logger.info(f"   Risk Strategy: {risk_dominant}")
+                logger.info(f"   Business Reasoning: {business_reasoning[:100] if business_reasoning else 'None'}...")
+                logger.info(f"   Risk Reasoning: {risk_reasoning[:100] if risk_reasoning else 'None'}...")
                 
                 analysis_type = analysis_data.get('analysis_type', 'strategic_archetype')
                 confidence_level = analysis_data.get('confidence_level', 'medium')
