@@ -58,6 +58,12 @@ try:
     from database import AnalysisDatabase
 except ImportError as e:
     missing_modules.append(f"database: {e}")
+    # Create a dummy AnalysisDatabase class to prevent errors
+    class AnalysisDatabase:
+        def __init__(self):
+            pass
+        def test_connection(self):
+            return False
 
 # Report missing modules but don't crash immediately
 if missing_modules:
