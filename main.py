@@ -8,7 +8,8 @@ import os
 import sys
 import json
 import logging
-from datetime import datetime
+import uuid
+from datetime import datetime, date
 from pathlib import Path
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -309,6 +310,11 @@ def get_available_years(company_number):
 @app.route('/api/analyze', methods=['POST'])
 def analyze_company():
     """Enhanced main analysis endpoint with full multi-file support and database storage"""
+    
+    # Generate unique request ID to track this analysis
+    request_id = str(uuid.uuid4())[:8]
+    logger.info(f"🆔 Analysis request {request_id} started")
+    
     try:
         # Get request data
         data = request.get_json()
@@ -340,7 +346,7 @@ def analyze_company():
                 'error': 'Years array is required'
             }), 400
         
-        logger.info(f"🚀 Starting ENHANCED multi-file analysis for company {company_number}, years: {years}")
+        logger.info(f"🚀 Request {request_id}: Starting ENHANCED multi-file analysis for company {company_number}, years: {years}")
         
         # Validate company exists
         exists, company_name = ch_client.validate_company_exists(company_number)
@@ -403,14 +409,28 @@ def analyze_company():
         archetype_analysis = analysis_results.get('archetype_analysis', {})
         analysis_metadata = archetype_analysis.get('analysis_metadata', {})
         
+        # Helper function to ensure JSON serializable data
+        def make_json_serializable(obj):
+            """Convert dates and other non-serializable objects to strings"""
+            if isinstance(obj, (datetime, date)):
+                return obj.isoformat()
+            elif hasattr(obj, 'isoformat'):  # Handle other date-like objects
+                return obj.isoformat()
+            elif isinstance(obj, dict):
+                return {k: make_json_serializable(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [make_json_serializable(item) for item in obj]
+            else:
+                return obj
+        
         response_data = {
             'success': True,
             'company_number': company_number,
             'company_name': company_name,
             'years_analyzed': years,
             'files_processed': len(extracted_content),
-            'business_strategy': archetype_analysis.get('business_strategy_archetypes', {}),
-            'risk_strategy': archetype_analysis.get('risk_strategy_archetypes', {}),
+            'business_strategy': make_json_serializable(archetype_analysis.get('business_strategy_archetypes', {})),
+            'risk_strategy': make_json_serializable(archetype_analysis.get('risk_strategy_archetypes', {})),
             'analysis_date': datetime.now().isoformat(),
             'analysis_type': archetype_analysis.get('analysis_type', 'unknown'),
             'analysis_metadata': {
@@ -423,7 +443,7 @@ def analyze_company():
             'file_details': [
                 {
                     'filename': content['filename'],
-                    'date': content['date'],
+                    'date': make_json_serializable(content['date']),  # Ensure date is serializable
                     'content_length': len(content['content']),
                     'extraction_method': content['metadata'].get('extraction_method', 'unknown')
                 }
@@ -431,14 +451,24 @@ def analyze_company():
             ]
         }
         
-        # Store in database
+        # Store in database with enhanced error handling (prevent retry loops)
         try:
-            record_id = db.store_analysis_result(response_data)
+            logger.info(f"💾 Request {request_id}: Attempting to store analysis results in database...")
+            
+            # Ensure all data is JSON serializable before storing
+            serializable_response = make_json_serializable(response_data)
+            
+            record_id = db.store_analysis_result(serializable_response)
             response_data['database_id'] = record_id
-            logger.info(f"💾 Analysis stored in database with ID: {record_id}")
+            logger.info(f"✅ Request {request_id}: Analysis stored in database with ID: {record_id}")
+            
         except Exception as db_error:
-            logger.error(f"❌ Database storage failed: {db_error}")
-            # Continue without failing the whole request
+            logger.error(f"❌ Request {request_id}: Database storage failed: {str(db_error)}")
+            logger.error(f"🔍 Request {request_id}: Error type: {type(db_error).__name__}")
+            
+            # Add database warning but DON'T retry to avoid multiple errors
+            response_data['database_warning'] = f'Analysis completed but database storage failed: {str(db_error)}'
+            logger.warning(f"⚠️ Request {request_id}: Continuing without database storage to prevent retry loops")
         
         # Clean up temporary files
         try:
@@ -447,14 +477,15 @@ def analyze_company():
         except Exception as cleanup_error:
             logger.warning(f"⚠️ Cleanup warning: {cleanup_error}")
         
-        logger.info(f"🎉 Enhanced multi-file analysis completed successfully for {company_number}")
+        logger.info(f"🎉 Request {request_id}: Enhanced multi-file analysis completed successfully for {company_number}")
         return jsonify(response_data)
         
     except Exception as e:
-        logger.error(f"❌ Analysis failed: {e}")
+        logger.error(f"❌ Request {request_id}: Analysis failed: {e}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': str(e),
+            'request_id': request_id
         }), 500
 
 def download_company_filings(company_number, max_years):
@@ -560,11 +591,23 @@ def process_and_analyze_content_api_enhanced(extracted_content, company_name, co
         
         # *** ENHANCED ARCHETYPE ANALYSIS WITH INDIVIDUAL FILE DATA ***
         logger.info("🚀 Performing ENHANCED archetype analysis with individual file support")
+        
+        # Ensure extracted_content dates are serializable before passing to analyzer
+        serializable_extracted_content = []
+        for content_data in extracted_content:
+            serializable_content = {
+                'filename': content_data['filename'],
+                'date': make_json_serializable(content_data['date']),  # Fix date serialization
+                'content': content_data['content'],
+                'metadata': content_data['metadata']
+            }
+            serializable_extracted_content.append(serializable_content)
+        
         archetype_analysis = archetype_analyzer.analyze_archetypes(
             combined_content,           # Combined content for compatibility
             company_name, 
             company_number,
-            extracted_content=extracted_content  # *** KEY ENHANCEMENT: Pass individual file data ***
+            extracted_content=serializable_extracted_content  # Pass serializable file data
         )
         
         logger.info("✅ Enhanced archetype analysis completed")
