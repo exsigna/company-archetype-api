@@ -2,6 +2,7 @@
 """
 Flask API for Strategic Analysis Tool with Database Integration
 Fixed for Flask 2.3+ compatibility and Gunicorn deployment
+Updated for ExecutiveAIAnalyzer (Board-Grade Analysis)
 """
 
 import time
@@ -40,7 +41,7 @@ except ImportError as e:
     missing_modules.append(f"pdf_extractor: {e}")
 
 try:
-    from ai_analyzer import AIArchetypeAnalyzer
+    from ai_analyzer import ExecutiveAIAnalyzer
 except ImportError as e:
     missing_modules.append(f"ai_analyzer: {e}")
 
@@ -134,7 +135,7 @@ try:
     content_processor = safe_init_component('ContentProcessor', ContentProcessor)
     pdf_extractor = safe_init_component('PDFExtractor', PDFExtractor)
     parallel_pdf_extractor = safe_init_component('ParallelPDFExtractor', lambda: ParallelPDFExtractor(max_workers=MAX_PARALLEL_WORKERS))
-    archetype_analyzer = safe_init_component('AIArchetypeAnalyzer', AIArchetypeAnalyzer)
+    archetype_analyzer = safe_init_component('ExecutiveAIAnalyzer', ExecutiveAIAnalyzer)
     file_manager = safe_init_component('FileManager', FileManager)
     report_generator = safe_init_component('ReportGenerator', ReportGenerator)
     
@@ -202,11 +203,14 @@ def create_app():
         return jsonify({
             'service': 'Strategic Analysis API',
             'status': 'running',
-            'version': '2.1.1',  # Updated version
+            'version': '3.0.0',  # Updated version for board-grade analysis
             'component_status': component_statuses,
             'features': [
+                'Board-grade strategic analysis with executive insights',
                 'Multi-file analysis with individual file processing',
-                'Enhanced AI archetype classification',
+                'Executive AI archetype classification',
+                'Strategic risk heatmap generation',
+                'Board action items and recommendations',
                 'Intelligent content sampling (15K chars)',
                 'File-by-file synthesis and confidence scoring',
                 'Comprehensive evidence-based reasoning',
@@ -449,10 +453,10 @@ def create_app():
 
     @app.route('/api/analyze', methods=['POST'])
     def analyze_company():
-        """Enhanced main analysis endpoint"""
+        """Enhanced main analysis endpoint with board-grade analysis"""
         
         # Check if critical components are available
-        required_components = ['CompaniesHouseClient', 'ContentProcessor', 'AIArchetypeAnalyzer']
+        required_components = ['CompaniesHouseClient', 'ContentProcessor', 'ExecutiveAIAnalyzer']
         missing_components = [
             comp for comp in required_components 
             if components_status.get(comp, {}).get('status') != 'ok'
@@ -482,6 +486,7 @@ def create_app():
             
             company_number = data.get('company_number', '').strip()
             years = data.get('years', [])
+            analysis_context = data.get('analysis_context', 'Strategic Review')  # New parameter for board context
             
             # Validate inputs
             if not company_number:
@@ -508,7 +513,7 @@ def create_app():
                     'error': f'Too many years requested. Maximum: {MAX_FILES_PER_ANALYSIS}'
                 }), 400
             
-            logger.info(f"🚀 Request {request_id}: Starting analysis for company {company_number}, years: {years}")
+            logger.info(f"🚀 Request {request_id}: Starting board-grade analysis for company {company_number}, years: {years}")
             
             # Validate company exists
             exists, company_name = ch_client.validate_company_exists(company_number)
@@ -561,10 +566,10 @@ def create_app():
             # Check memory before analysis
             check_memory_usage()
             
-            # Enhanced content processing and analysis
-            logger.info("🧠 Processing and analyzing content...")
-            analysis_results = process_and_analyze_content_api(
-                extracted_content, company_name, company_number
+            # Enhanced content processing and board-grade analysis
+            logger.info("🧠 Processing and analyzing content for board presentation...")
+            analysis_results = process_and_analyze_content_for_board(
+                extracted_content, company_name, company_number, analysis_context
             )
             
             if not analysis_results:
@@ -573,8 +578,8 @@ def create_app():
                     'error': 'Content analysis failed'
                 }), 500
             
-            # Prepare response data
-            archetype_analysis = analysis_results.get('archetype_analysis', {})
+            # Prepare enhanced response data with board-grade insights
+            board_analysis = analysis_results.get('board_analysis', {})
             
             response_data = {
                 'success': True,
@@ -582,28 +587,42 @@ def create_app():
                 'company_name': company_name,
                 'years_analyzed': years,
                 'files_processed': len(extracted_content),
-                'business_strategy': archetype_analysis.get('business_strategy_archetypes', {}),
-                'risk_strategy': archetype_analysis.get('risk_strategy_archetypes', {}),
+                'analysis_context': analysis_context,
+                
+                # Board-grade analysis results
+                'executive_summary': board_analysis.get('executive_summary', ''),
+                'business_strategy_analysis': board_analysis.get('business_strategy_analysis', {}),
+                'risk_strategy_analysis': board_analysis.get('risk_strategy_analysis', {}),
+                'strategic_recommendations': board_analysis.get('strategic_recommendations', []),
+                'executive_dashboard': board_analysis.get('executive_dashboard', {}),
+                'board_presentation_summary': board_analysis.get('board_presentation_summary', {}),
+                
+                # Legacy compatibility fields
+                'business_strategy': board_analysis.get('business_strategy_analysis', {}),
+                'risk_strategy': board_analysis.get('risk_strategy_analysis', {}),
+                
                 'analysis_date': datetime.now().isoformat(),
-                'analysis_type': archetype_analysis.get('analysis_type', 'unknown'),
+                'analysis_type': board_analysis.get('analysis_metadata', {}).get('analysis_type', 'board_grade_executive'),
+                'confidence_level': board_analysis.get('analysis_metadata', {}).get('confidence_level', 'medium'),
                 'processing_stats': {
                     'parallel_extraction_used': len(filtered_files) > 1,
                     'total_content_length': sum(len(content.get('content', '')) for content in extracted_content),
                     'extraction_methods': list(set(
                         content.get('metadata', {}).get('extraction_method', 'unknown') 
                         for content in extracted_content
-                    ))
+                    )),
+                    'board_grade_analysis': True
                 }
             }
             
             # Store in database if available
             if db and components_status.get('AnalysisDatabase', {}).get('status') == 'ok':
                 try:
-                    logger.info(f"💾 Request {request_id}: Storing analysis results in database...")
+                    logger.info(f"💾 Request {request_id}: Storing board-grade analysis results in database...")
                     serializable_response = make_json_serializable(response_data)
                     record_id = db.store_analysis_result(serializable_response)
                     response_data['database_id'] = record_id
-                    logger.info(f"✅ Request {request_id}: Analysis stored in database with ID: {record_id}")
+                    logger.info(f"✅ Request {request_id}: Board-grade analysis stored in database with ID: {record_id}")
                     
                 except Exception as db_error:
                     logger.error(f"❌ Request {request_id}: Database storage failed: {str(db_error)}")
@@ -622,7 +641,7 @@ def create_app():
             # Final memory cleanup
             gc.collect()
             
-            logger.info(f"🎉 Request {request_id}: Analysis completed successfully for {company_number}")
+            logger.info(f"🎉 Request {request_id}: Board-grade analysis completed successfully for {company_number}")
             return jsonify(response_data)
             
         except Exception as e:
@@ -1026,6 +1045,9 @@ def create_app():
             
             # Component capabilities
             capabilities = {
+                'board_grade_analysis': archetype_analyzer is not None,
+                'executive_insights': archetype_analyzer is not None,
+                'strategic_recommendations': True,
                 'multi_file_analysis': parallel_pdf_extractor is not None,
                 'ai_archetype_classification': archetype_analyzer is not None,
                 'enhanced_content_sampling': True,
@@ -1044,7 +1066,7 @@ def create_app():
             
             status = {
                 'service': 'Strategic Analysis API',
-                'version': '2.1.1',
+                'version': '3.0.0',  # Board-grade version
                 'status': 'operational',
                 'timestamp': datetime.now().isoformat(),
                 'system': {
@@ -1058,7 +1080,7 @@ def create_app():
                     'pdf_extractor': components_status.get('PDFExtractor', {}).get('status', 'error'),
                     'parallel_pdf_extractor': components_status.get('ParallelPDFExtractor', {}).get('status', 'error'),
                     'content_processor': components_status.get('ContentProcessor', {}).get('status', 'error'),
-                    'ai_analyzer': components_status.get('AIArchetypeAnalyzer', {}).get('status', 'error'),
+                    'executive_ai_analyzer': components_status.get('ExecutiveAIAnalyzer', {}).get('status', 'error'),
                     'database': db_status,
                     'file_manager': components_status.get('FileManager', {}).get('status', 'error'),
                     'report_generator': components_status.get('ReportGenerator', {}).get('status', 'error')
@@ -1096,7 +1118,7 @@ def create_app():
             warnings = []
             
             # Check critical components
-            required_components = ['CompaniesHouseClient', 'ContentProcessor', 'AIArchetypeAnalyzer']
+            required_components = ['CompaniesHouseClient', 'ContentProcessor', 'ExecutiveAIAnalyzer']
             missing_components = [
                 comp for comp in required_components 
                 if components_status.get(comp, {}).get('status') != 'ok'
@@ -1170,6 +1192,7 @@ def create_app():
                     'previous_analyses_count': len(previous_analyses)
                 },
                 'system_capabilities': {
+                    'board_grade_analysis_available': archetype_analyzer is not None,
                     'ai_analysis_available': archetype_analyzer is not None,
                     'parallel_processing_available': parallel_pdf_extractor is not None,
                     'database_available': db is not None,
@@ -1315,14 +1338,14 @@ def extract_content_from_files_legacy(downloaded_files):
     
     return extracted_content
 
-def process_and_analyze_content_api(extracted_content, company_name, company_number):
-    """Process and analyze content for API with enhanced multi-file support"""
+def process_and_analyze_content_for_board(extracted_content, company_name, company_number, analysis_context):
+    """Process and analyze content for board-grade insights"""
     try:
         if not content_processor or not archetype_analyzer:
-            logger.error("Content processor or archetype analyzer not available")
+            logger.error("Content processor or executive analyzer not available")
             return None
         
-        logger.info(f"🧠 Starting content processing for {len(extracted_content)} files")
+        logger.info(f"🧠 Starting board-grade content processing for {len(extracted_content)} files")
         
         # Process documents individually
         processed_documents = []
@@ -1337,12 +1360,12 @@ def process_and_analyze_content_api(extracted_content, company_name, company_num
         combined_analysis = content_processor.combine_multiple_documents(processed_documents)
         logger.info("✅ Document combination completed")
         
-        # Prepare combined content (for backward compatibility)
+        # Prepare combined content
         combined_content = "\n\n".join([content_data['content'] for content_data in extracted_content])
         logger.info(f"📊 Combined content length: {len(combined_content):,} characters")
         
-        # Enhanced archetype analysis with individual file data
-        logger.info("🚀 Performing archetype analysis with multi-file support")
+        # Board-grade archetype analysis with executive insights
+        logger.info("🏛️ Performing board-grade archetype analysis with executive insights")
         
         # Ensure extracted_content dates are serializable before passing to analyzer
         serializable_extracted_content = []
@@ -1355,24 +1378,31 @@ def process_and_analyze_content_api(extracted_content, company_name, company_num
             }
             serializable_extracted_content.append(serializable_content)
         
-        archetype_analysis = archetype_analyzer.analyze_archetypes(
+        # Use the new board-grade analysis method
+        board_analysis = archetype_analyzer.analyze_for_board(
             combined_content,
             company_name, 
             company_number,
-            extracted_content=serializable_extracted_content
+            extracted_content=serializable_extracted_content,
+            analysis_context=analysis_context
         )
         
-        logger.info("✅ Archetype analysis completed")
+        logger.info("✅ Board-grade archetype analysis completed")
         
         return {
             'processed_content': combined_analysis,
-            'archetype_analysis': archetype_analysis,
+            'board_analysis': board_analysis,
             'document_count': len(extracted_content)
         }
         
     except Exception as e:
-        logger.error(f"❌ Error in content processing: {e}")
+        logger.error(f"❌ Error in board-grade content processing: {e}")
         return None
+
+# Legacy function for backward compatibility
+def process_and_analyze_content_api(extracted_content, company_name, company_number):
+    """Legacy function for backward compatibility - delegates to board analysis"""
+    return process_and_analyze_content_for_board(extracted_content, company_name, company_number, 'Strategic Review')
 
 # Create the Flask app
 app = create_app()
@@ -1380,9 +1410,13 @@ app = create_app()
 if __name__ == '__main__':
     # Enhanced startup logging
     logger.info("=" * 70)
-    logger.info("🚀 STRATEGIC ANALYSIS API v2.1.1 - FLASK 2.3+ COMPATIBLE")
+    logger.info("🚀 STRATEGIC ANALYSIS API v3.0.0 - BOARD-GRADE ANALYSIS")
     logger.info("=" * 70)
     logger.info("🔧 Features:")
+    logger.info("   ✅ Board-grade strategic analysis with executive insights")
+    logger.info("   ✅ Executive dashboard and strategic recommendations")
+    logger.info("   ✅ Strategic risk heatmap for board oversight")
+    logger.info("   ✅ Board presentation summary generation")
     logger.info("   ✅ Fixed Flask 2.3+ compatibility")
     logger.info("   ✅ Gunicorn deployment ready")
     logger.info("   ✅ Improved error handling and graceful degradation")
