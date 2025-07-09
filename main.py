@@ -3,6 +3,7 @@
 Flask API for Strategic Analysis Tool with Database Integration
 Fixed for Flask 2.3+ compatibility and Gunicorn deployment
 Updated for ExecutiveAIAnalyzer (Board-Grade Analysis)
+Enhanced Lookup API to extract and return archetype names
 """
 
 import time
@@ -127,6 +128,55 @@ def safe_init_component(name, init_func):
         components_status[name] = {'status': 'error', 'error': str(e)}
         logger.error(f"❌ {name} initialization failed: {e}")
         return None
+
+def extract_archetype_from_analysis(result):
+    """Extract business and risk archetype names from analysis result"""
+    business_strategy = 'Not Available'
+    risk_strategy = 'Not Available'
+    
+    try:
+        # Try to get from direct fields first
+        business_strategy = result.get('business_strategy_dominant') or 'Not Available'
+        risk_strategy = result.get('risk_strategy_dominant') or 'Not Available'
+        
+        # If not available, try to extract from raw_response
+        if (business_strategy == 'Not Available' or risk_strategy == 'Not Available') and result.get('raw_response'):
+            raw_response = result.get('raw_response')
+            
+            # Parse raw_response if it's a string
+            if isinstance(raw_response, str):
+                try:
+                    raw_data = json.loads(raw_response)
+                except json.JSONDecodeError:
+                    raw_data = {}
+            else:
+                raw_data = raw_response or {}
+            
+            # Extract business strategy archetype
+            if business_strategy == 'Not Available':
+                business_strategy = (
+                    raw_data.get('business_strategy_analysis', {}).get('dominant_archetype') or
+                    raw_data.get('business_strategy', {}).get('dominant_archetype') or
+                    raw_data.get('business_strategy', {}).get('dominant') or
+                    raw_data.get('business_strategy_dominant') or
+                    'Not Available'
+                )
+            
+            # Extract risk strategy archetype
+            if risk_strategy == 'Not Available':
+                risk_strategy = (
+                    raw_data.get('risk_strategy_analysis', {}).get('dominant_archetype') or
+                    raw_data.get('risk_strategy', {}).get('dominant_archetype') or
+                    raw_data.get('risk_strategy', {}).get('dominant') or
+                    raw_data.get('risk_strategy_dominant') or
+                    'Not Available'
+                )
+    
+    except Exception as e:
+        logger.warning(f"Error extracting archetypes from analysis {result.get('id', 'unknown')}: {e}")
+        # Keep the default 'Not Available' values
+    
+    return business_strategy, risk_strategy
 
 # Initialize components
 db = None  # Initialize to None first
@@ -282,7 +332,7 @@ def create_app():
 
     @app.route('/api/company/lookup/<company_identifier>')
     def lookup_company_analysis(company_identifier):
-        """Look up previous analyses for a company by name or number"""
+        """Look up previous analyses for a company by name or number - Enhanced with archetype extraction"""
         if not db or components_status.get('AnalysisDatabase', {}).get('status') != 'ok':
             return jsonify({
                 'success': False,
@@ -298,6 +348,9 @@ def create_app():
                 if results:
                     analysis_metadata = []
                     for result in results:
+                        # Extract archetype names from raw_response or stored fields
+                        business_strategy, risk_strategy = extract_archetype_from_analysis(result)
+                        
                         metadata = {
                             'analysis_id': result.get('id'),
                             'company_number': result.get('company_number'),
@@ -305,10 +358,13 @@ def create_app():
                             'analysis_date': result.get('analysis_date'),
                             'years_analyzed': result.get('years_analyzed', []),
                             'files_processed': result.get('files_processed', 0),
-                            'business_strategy': result.get('business_strategy_dominant'),
-                            'risk_strategy': result.get('risk_strategy_dominant'),
+                            'business_strategy': business_strategy,  # Now extracted from raw_response
+                            'business_strategy_dominant': business_strategy,  # Legacy compatibility
+                            'risk_strategy': risk_strategy,  # Now extracted from raw_response
+                            'risk_strategy_dominant': risk_strategy,  # Legacy compatibility
                             'status': result.get('status'),
-                            'analysis_type': result.get('analysis_type', 'unknown')
+                            'analysis_type': result.get('analysis_type', 'unknown'),
+                            'confidence_level': result.get('confidence_level', 'medium')
                         }
                         analysis_metadata.append(metadata)
                     
@@ -332,6 +388,9 @@ def create_app():
                 
                 analysis_metadata = []
                 for result in detailed_analyses:
+                    # Extract archetype names from raw_response or stored fields
+                    business_strategy, risk_strategy = extract_archetype_from_analysis(result)
+                    
                     metadata = {
                         'analysis_id': result.get('id'),
                         'company_number': result.get('company_number'),
@@ -339,10 +398,13 @@ def create_app():
                         'analysis_date': result.get('analysis_date'),
                         'years_analyzed': result.get('years_analyzed', []),
                         'files_processed': result.get('files_processed', 0),
-                        'business_strategy': result.get('business_strategy_dominant'),
-                        'risk_strategy': result.get('risk_strategy_dominant'),
+                        'business_strategy': business_strategy,  # Now extracted from raw_response
+                        'business_strategy_dominant': business_strategy,  # Legacy compatibility
+                        'risk_strategy': risk_strategy,  # Now extracted from raw_response
+                        'risk_strategy_dominant': risk_strategy,  # Legacy compatibility
                         'status': result.get('status'),
-                        'analysis_type': result.get('analysis_type', 'unknown')
+                        'analysis_type': result.get('analysis_type', 'unknown'),
+                        'confidence_level': result.get('confidence_level', 'medium')
                     }
                     analysis_metadata.append(metadata)
                 
@@ -1417,6 +1479,7 @@ if __name__ == '__main__':
     logger.info("   ✅ Executive dashboard and strategic recommendations")
     logger.info("   ✅ Strategic risk heatmap for board oversight")
     logger.info("   ✅ Board presentation summary generation")
+    logger.info("   ✅ Enhanced lookup API with archetype extraction")
     logger.info("   ✅ Fixed Flask 2.3+ compatibility")
     logger.info("   ✅ Gunicorn deployment ready")
     logger.info("   ✅ Improved error handling and graceful degradation")
