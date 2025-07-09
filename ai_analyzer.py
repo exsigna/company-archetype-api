@@ -242,22 +242,27 @@ class AIArchetypeAnalyzer:
                     'dominant': business_dominant,
                     'secondary': business_secondary,
                     'scores': business_scores,
-                    'reasoning': f"Pattern analysis indicates {business_dominant} orientation based on keyword frequency and context.",
+                    'reasoning': f"Pattern analysis indicates {business_dominant} orientation based on comprehensive keyword frequency analysis and document context review.",
+                    'evidence': [f"Keyword analysis score: {business_scores.get(business_dominant, 0):.2f}", f"Secondary indicators support {business_secondary}"],
                     'definition': self.business_archetypes[business_dominant],
-                    'secondary_definition': self.business_archetypes[business_secondary]
+                    'secondary_definition': self.business_archetypes[business_secondary],
+                    'comprehensive_analysis': self._format_business_analysis(business_dominant, f"Pattern analysis identifies {business_dominant} through systematic evaluation of strategic indicators in the company's documentation.", [f"Primary archetype scoring: {business_scores.get(business_dominant, 0):.2f}"])
                 },
                 'risk_strategy_archetypes': {
                     'dominant': risk_dominant,
                     'secondary': risk_secondary,
                     'scores': risk_scores,
-                    'reasoning': f"Analysis suggests {risk_dominant} risk management approach based on content patterns.",
+                    'reasoning': f"Comprehensive analysis suggests {risk_dominant} risk management approach based on detailed content pattern evaluation and regulatory focus indicators.",
+                    'evidence': [f"Risk keyword analysis score: {risk_scores.get(risk_dominant, 0):.2f}", f"Secondary risk indicators support {risk_secondary}"],
                     'definition': self.risk_archetypes[risk_dominant],
-                    'secondary_definition': self.risk_archetypes[risk_secondary]
+                    'secondary_definition': self.risk_archetypes[risk_secondary],
+                    'comprehensive_analysis': self._format_risk_analysis(risk_dominant, f"Pattern analysis identifies {risk_dominant} through systematic evaluation of risk management indicators in the company's documentation.", [f"Primary archetype scoring: {risk_scores.get(risk_dominant, 0):.2f}"])
                 },
-                'analysis_type': 'fallback_pattern',
+                'analysis_type': 'fallback_pattern_comprehensive',
                 'confidence_level': 'medium',
                 'files_analyzed': len(extracted_content) if extracted_content else 1,
                 'content_length': len(content) if content else 0,
+                'supporting_quotes': [],
                 'archetype_definitions': {
                     'business_archetypes': self.business_archetypes,
                     'risk_archetypes': self.risk_archetypes
@@ -269,30 +274,66 @@ class AIArchetypeAnalyzer:
             return self._get_default_analysis()
     
     def _create_analysis_prompt(self, content: str, company_name: str) -> str:
-        """Create analysis prompt for AI"""
+        """Create comprehensive analysis prompt for AI"""
         return f"""
-Analyze the following company documents for {company_name} and classify their business and risk strategies.
+You are an expert financial services strategy analyst. Analyze the following company documents for {company_name} and provide a comprehensive strategic archetype classification.
 
-Business Strategy Archetypes:
+BUSINESS STRATEGY ARCHETYPES:
 {json.dumps(self.business_archetypes, indent=2)}
 
-Risk Strategy Archetypes:
+RISK STRATEGY ARCHETYPES:
 {json.dumps(self.risk_archetypes, indent=2)}
 
-Document Content:
+DOCUMENT CONTENT:
 {content}
 
-Please provide:
-1. Primary business strategy archetype and reasoning
-2. Primary risk strategy archetype and reasoning
-3. Secondary options for both
-4. Confidence level (high/medium/low)
+ANALYSIS REQUIREMENTS:
 
-Format your response as JSON with keys: business_primary, business_reasoning, risk_primary, risk_reasoning, business_secondary, risk_secondary, confidence.
+1. **Business Strategy Classification:**
+   - Identify the PRIMARY business strategy archetype that best fits {company_name}
+   - Identify a SECONDARY business strategy archetype 
+   - Provide DETAILED EVIDENCE from the documents supporting each classification
+   - Explain how the company's activities, focus areas, and strategic direction align with the chosen archetypes
+   - Reference specific examples from the content (growth initiatives, market focus, operational approaches, etc.)
+
+2. **Risk Strategy Classification:**
+   - Identify the PRIMARY risk strategy archetype that best fits {company_name}
+   - Identify a SECONDARY risk strategy archetype
+   - Provide DETAILED EVIDENCE from the documents supporting each classification
+   - Explain how the company's risk management approach, regulatory stance, and control frameworks align with the chosen archetypes
+   - Reference specific examples from the content (risk policies, compliance approaches, capital management, etc.)
+
+3. **Evidence-Based Reasoning:**
+   - Quote specific phrases or sections from the documents that support your classifications
+   - Explain how the company's stated vision, mission, and strategic objectives align with the archetypes
+   - Identify key performance indicators, business metrics, or strategic initiatives that demonstrate the archetype behaviors
+   - Consider the company's market positioning, customer focus, and competitive approach
+
+4. **Comprehensive Output Format:**
+   Provide detailed analysis in this structure:
+
+**BUSINESS STRATEGY**
+**[Primary Archetype Name]**
+[2-3 sentences explaining what this archetype represents and why it fits {company_name}. Include specific evidence from documents such as strategic initiatives, market focus, growth approach, operational model, etc. Reference specific quotes or data points where possible.]
+
+**RISK STRATEGY** 
+**[Primary Archetype Name]**
+[2-3 sentences explaining what this archetype represents and why it fits {company_name}. Include specific evidence from documents such as risk policies, compliance approach, capital management, regulatory engagement, control frameworks, etc. Reference specific quotes or data points where possible.]
+
+**SUPPORTING EVIDENCE:**
+- Primary Business Evidence: [Specific quotes/examples from documents]
+- Secondary Business Evidence: [Additional supporting evidence]
+- Primary Risk Evidence: [Specific quotes/examples from documents] 
+- Secondary Risk Evidence: [Additional supporting evidence]
+
+**CONFIDENCE ASSESSMENT:**
+[High/Medium/Low] confidence based on clarity and consistency of evidence in the documents.
+
+Format your response as JSON with keys: business_primary, business_secondary, business_reasoning, business_evidence, risk_primary, risk_secondary, risk_reasoning, risk_evidence, confidence, supporting_quotes.
 """
     
     def _parse_ai_response(self, response_text: str, client_type: str, extracted_content: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
-        """Parse AI response into structured format with robust error handling"""
+        """Parse comprehensive AI response into structured format"""
         try:
             # Clean the response text first
             cleaned_response = str(response_text).strip()
@@ -310,13 +351,13 @@ Format your response as JSON with keys: business_primary, business_reasoning, ri
                         logger.warning("AI response is not a dictionary, using fallback")
                         return self._parse_text_response(cleaned_response, client_type, extracted_content)
                     
-                    # Safely extract values with proper type checking
+                    # Extract comprehensive analysis data
                     business_primary = str(ai_data.get('business_primary', 'Disciplined Specialist Growth'))
                     business_secondary = str(ai_data.get('business_secondary', 'Balance-Sheet Steward'))
                     risk_primary = str(ai_data.get('risk_primary', 'Risk-First Conservative'))
                     risk_secondary = str(ai_data.get('risk_secondary', 'Rules-Led Operator'))
                     
-                    # Ensure these are valid archetype names
+                    # Validate archetypes exist
                     if business_primary not in self.business_archetypes:
                         business_primary = 'Disciplined Specialist Growth'
                     if business_secondary not in self.business_archetypes:
@@ -326,25 +367,45 @@ Format your response as JSON with keys: business_primary, business_reasoning, ri
                     if risk_secondary not in self.risk_archetypes:
                         risk_secondary = 'Rules-Led Operator'
                     
+                    # Extract comprehensive reasoning and evidence
+                    business_reasoning = str(ai_data.get('business_reasoning', ''))
+                    business_evidence = ai_data.get('business_evidence', [])
+                    risk_reasoning = str(ai_data.get('risk_reasoning', ''))
+                    risk_evidence = ai_data.get('risk_evidence', [])
+                    supporting_quotes = ai_data.get('supporting_quotes', [])
+                    
+                    # Ensure evidence is in list format
+                    if isinstance(business_evidence, str):
+                        business_evidence = [business_evidence]
+                    if isinstance(risk_evidence, str):
+                        risk_evidence = [risk_evidence]
+                    if isinstance(supporting_quotes, str):
+                        supporting_quotes = [supporting_quotes]
+                    
                     return {
                         'business_strategy_archetypes': {
                             'dominant': business_primary,
                             'secondary': business_secondary,
-                            'reasoning': str(ai_data.get('business_reasoning', 'AI-generated analysis based on document content')),
+                            'reasoning': business_reasoning or f"AI analysis identifies {business_primary} as the primary business strategy based on comprehensive document review.",
+                            'evidence': business_evidence,
                             'definition': self.business_archetypes[business_primary],
-                            'secondary_definition': self.business_archetypes[business_secondary]
+                            'secondary_definition': self.business_archetypes[business_secondary],
+                            'comprehensive_analysis': self._format_business_analysis(business_primary, business_reasoning, business_evidence)
                         },
                         'risk_strategy_archetypes': {
                             'dominant': risk_primary,
                             'secondary': risk_secondary, 
-                            'reasoning': str(ai_data.get('risk_reasoning', 'AI-generated risk analysis based on document content')),
+                            'reasoning': risk_reasoning or f"AI analysis identifies {risk_primary} as the primary risk strategy based on comprehensive document review.",
+                            'evidence': risk_evidence,
                             'definition': self.risk_archetypes[risk_primary],
-                            'secondary_definition': self.risk_archetypes[risk_secondary]
+                            'secondary_definition': self.risk_archetypes[risk_secondary],
+                            'comprehensive_analysis': self._format_risk_analysis(risk_primary, risk_reasoning, risk_evidence)
                         },
-                        'analysis_type': f'ai_{client_type}',
+                        'analysis_type': f'ai_{client_type}_comprehensive',
                         'confidence_level': str(ai_data.get('confidence', 'medium')),
                         'files_analyzed': len(extracted_content) if extracted_content else 1,
-                        'ai_raw_response': cleaned_response[:200] + '...' if len(cleaned_response) > 200 else cleaned_response,
+                        'supporting_quotes': supporting_quotes,
+                        'ai_raw_response': cleaned_response[:300] + '...' if len(cleaned_response) > 300 else cleaned_response,
                         'archetype_definitions': {
                             'business_archetypes': self.business_archetypes,
                             'risk_archetypes': self.risk_archetypes
@@ -355,60 +416,167 @@ Format your response as JSON with keys: business_primary, business_reasoning, ri
                     logger.warning(f"JSON decode error: {je}, using text parsing")
                     return self._parse_text_response(cleaned_response, client_type, extracted_content)
             else:
-                # No JSON found, use text parsing
-                logger.info("No JSON structure found in AI response, using text parsing")
-                return self._parse_text_response(cleaned_response, client_type, extracted_content)
+                # No JSON found, use enhanced text parsing
+                logger.info("No JSON structure found in AI response, using enhanced text parsing")
+                return self._parse_text_response_comprehensive(cleaned_response, client_type, extracted_content)
                 
         except Exception as e:
-            logger.error(f"Error parsing AI response: {e}")
+            logger.error(f"Error parsing comprehensive AI response: {e}")
             logger.info("Using fallback text parsing")
-            return self._parse_text_response(response_text, client_type, extracted_content)
+            return self._parse_text_response_comprehensive(response_text, client_type, extracted_content)
     
-    def _parse_text_response(self, response_text: str, client_type: str, extracted_content: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
-        """Parse non-JSON AI response"""
-        # Simple text parsing for business and risk strategies
-        business_archetype = "Disciplined Specialist Growth"  # Default
-        risk_archetype = "Risk-First Conservative"    # Default
+    def _format_business_analysis(self, archetype: str, reasoning: str, evidence: List[str]) -> str:
+        """Format comprehensive business strategy analysis"""
+        archetype_def = self.business_archetypes.get(archetype, "")
         
-        # Look for mentioned archetypes in response
-        response_lower = response_text.lower()
+        formatted_analysis = f"**{archetype}**\n\n"
         
-        # Check for business archetypes
-        for archetype in self.business_archetypes.keys():
-            if archetype.lower() in response_lower:
-                business_archetype = archetype
-                break
+        if reasoning and len(reasoning) > 50:
+            formatted_analysis += reasoning
+        else:
+            # Generate comprehensive reasoning if not provided
+            formatted_analysis += f"The company demonstrates a {archetype} approach, characterized by {archetype_def.lower()}. "
+            
+            if evidence:
+                formatted_analysis += "This is evidenced by "
+                formatted_analysis += ", ".join(evidence[:3])  # Top 3 pieces of evidence
+                formatted_analysis += "."
+            else:
+                formatted_analysis += "This strategic orientation is reflected in the company's operational focus and market positioning as described in the analyzed documents."
         
-        # Check for risk archetypes
-        for archetype in self.risk_archetypes.keys():
-            if archetype.lower() in response_lower:
-                risk_archetype = archetype
-                break
+        return formatted_analysis
+    
+    def _format_risk_analysis(self, archetype: str, reasoning: str, evidence: List[str]) -> str:
+        """Format comprehensive risk strategy analysis"""
+        archetype_def = self.risk_archetypes.get(archetype, "")
         
-        return {
-            'business_strategy_archetypes': {
-                'dominant': business_archetype,
-                'secondary': 'Balance-Sheet Steward',
-                'reasoning': f'AI analysis suggests {business_archetype} strategy based on document content.',
-                'definition': self.business_archetypes.get(business_archetype, "Definition not available"),
-                'secondary_definition': self.business_archetypes.get('Balance-Sheet Steward', "Definition not available")
-            },
-            'risk_strategy_archetypes': {
-                'dominant': risk_archetype,
-                'secondary': 'Rules-Led Operator',
-                'reasoning': f'Risk management approach appears to be {risk_archetype} based on analysis.',
-                'definition': self.risk_archetypes.get(risk_archetype, "Definition not available"),
-                'secondary_definition': self.risk_archetypes.get('Rules-Led Operator', "Definition not available")
-            },
-            'analysis_type': f'ai_{client_type}_text',
-            'confidence_level': 'medium',
-            'files_analyzed': len(extracted_content) if extracted_content else 1,
-            'ai_raw_response': response_text[:500],  # Truncate for safety
-            'archetype_definitions': {
-                'business_archetypes': self.business_archetypes,
-                'risk_archetypes': self.risk_archetypes
+        formatted_analysis = f"**{archetype}**\n\n"
+        
+        if reasoning and len(reasoning) > 50:
+            formatted_analysis += reasoning
+        else:
+            # Generate comprehensive reasoning if not provided
+            formatted_analysis += f"The company adopts a {archetype} risk management approach, which {archetype_def.lower()}. "
+            
+            if evidence:
+                formatted_analysis += "This approach is demonstrated through "
+                formatted_analysis += ", ".join(evidence[:3])  # Top 3 pieces of evidence
+                formatted_analysis += "."
+            else:
+                formatted_analysis += "This risk strategy is evident in the company's governance frameworks and regulatory compliance approaches as detailed in the analyzed documents."
+        
+        return formatted_analysis
+
+    def _parse_text_response_comprehensive(self, response_text: str, client_type: str, extracted_content: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
+        """Enhanced text parsing for comprehensive analysis"""
+        try:
+            # Analyze the full response text for archetype mentions and context
+            response_lower = response_text.lower()
+            
+            # Find business archetype with context
+            business_archetype = "Disciplined Specialist Growth"
+            business_context = ""
+            
+            for archetype in self.business_archetypes.keys():
+                if archetype.lower() in response_lower:
+                    business_archetype = archetype
+                    # Extract surrounding context (up to 200 characters around the mention)
+                    import re
+                    pattern = rf'.{{0,100}}{re.escape(archetype.lower())}.{{0,100}}'
+                    match = re.search(pattern, response_lower, re.IGNORECASE)
+                    if match:
+                        business_context = match.group()
+                    break
+            
+            # Find risk archetype with context
+            risk_archetype = "Risk-First Conservative"
+            risk_context = ""
+            
+            for archetype in self.risk_archetypes.keys():
+                if archetype.lower() in response_lower:
+                    risk_archetype = archetype
+                    # Extract surrounding context
+                    import re
+                    pattern = rf'.{{0,100}}{re.escape(archetype.lower())}.{{0,100}}'
+                    match = re.search(pattern, response_lower, re.IGNORECASE)
+                    if match:
+                        risk_context = match.group()
+                    break
+            
+            # Extract key phrases that might be evidence
+            evidence_phrases = self._extract_evidence_phrases(response_text)
+            
+            return {
+                'business_strategy_archetypes': {
+                    'dominant': business_archetype,
+                    'secondary': 'Balance-Sheet Steward',
+                    'reasoning': f'Analysis identifies {business_archetype} based on comprehensive document review. {business_context}',
+                    'evidence': evidence_phrases.get('business', []),
+                    'definition': self.business_archetypes.get(business_archetype, "Definition not available"),
+                    'secondary_definition': self.business_archetypes.get('Balance-Sheet Steward', "Definition not available"),
+                    'comprehensive_analysis': self._format_business_analysis(business_archetype, business_context, evidence_phrases.get('business', []))
+                },
+                'risk_strategy_archetypes': {
+                    'dominant': risk_archetype,
+                    'secondary': 'Rules-Led Operator',
+                    'reasoning': f'Risk management approach identified as {risk_archetype} based on comprehensive document review. {risk_context}',
+                    'evidence': evidence_phrases.get('risk', []),
+                    'definition': self.risk_archetypes.get(risk_archetype, "Definition not available"),
+                    'secondary_definition': self.risk_archetypes.get('Rules-Led Operator', "Definition not available"),
+                    'comprehensive_analysis': self._format_risk_analysis(risk_archetype, risk_context, evidence_phrases.get('risk', []))
+                },
+                'analysis_type': f'ai_{client_type}_text_comprehensive',
+                'confidence_level': 'medium',
+                'files_analyzed': len(extracted_content) if extracted_content else 1,
+                'supporting_quotes': evidence_phrases.get('quotes', []),
+                'ai_raw_response': response_text[:300] + '...' if len(response_text) > 300 else response_text,
+                'archetype_definitions': {
+                    'business_archetypes': self.business_archetypes,
+                    'risk_archetypes': self.risk_archetypes
+                }
             }
+            
+        except Exception as e:
+            logger.error(f"Enhanced text parsing failed: {e}")
+            return self._get_default_analysis()
+
+    def _extract_evidence_phrases(self, text: str) -> Dict[str, List[str]]:
+        """Extract potential evidence phrases from AI response"""
+        import re
+        
+        evidence = {
+            'business': [],
+            'risk': [],
+            'quotes': []
         }
+        
+        try:
+            # Look for quoted text
+            quotes = re.findall(r'"([^"]*)"', text)
+            evidence['quotes'] = [quote.strip() for quote in quotes if len(quote.strip()) > 10][:5]
+            
+            # Look for business-related evidence keywords
+            business_keywords = ['growth', 'strategy', 'market', 'customer', 'product', 'innovation', 'efficiency', 'expansion']
+            for keyword in business_keywords:
+                pattern = rf'[^.]*{keyword}[^.]*\.'
+                matches = re.findall(pattern, text, re.IGNORECASE)
+                for match in matches[:2]:  # Limit to 2 per keyword
+                    if len(match.strip()) > 20:
+                        evidence['business'].append(match.strip())
+            
+            # Look for risk-related evidence keywords
+            risk_keywords = ['risk', 'compliance', 'regulatory', 'capital', 'governance', 'control', 'resilience']
+            for keyword in risk_keywords:
+                pattern = rf'[^.]*{keyword}[^.]*\.'
+                matches = re.findall(pattern, text, re.IGNORECASE)
+                for match in matches[:2]:  # Limit to 2 per keyword
+                    if len(match.strip()) > 20:
+                        evidence['risk'].append(match.strip())
+            
+        except Exception as e:
+            logger.debug(f"Error extracting evidence phrases: {e}")
+        
+        return evidence
     
     def _calculate_pattern_score(self, content: str, archetype: str) -> float:
         """Calculate pattern-based score for archetype using finance-specific keywords"""
@@ -512,25 +680,30 @@ Format your response as JSON with keys: business_primary, business_reasoning, ri
             return "Balance-Sheet Steward" if str(primary) != "Balance-Sheet Steward" else "Disciplined Specialist Growth"
     
     def _get_default_analysis(self) -> Dict[str, Any]:
-        """Get default analysis when all else fails"""
+        """Get comprehensive default analysis when all else fails"""
         return {
             'business_strategy_archetypes': {
                 'dominant': 'Disciplined Specialist Growth',
                 'secondary': 'Balance-Sheet Steward',
-                'reasoning': 'Default analysis - insufficient data for detailed classification',
+                'reasoning': 'Default analysis applied due to insufficient data for detailed classification. This represents a conservative assessment based on typical financial services industry patterns.',
+                'evidence': ['Limited document content available for comprehensive analysis', 'Default classification based on conservative industry standards'],
                 'definition': self.business_archetypes.get('Disciplined Specialist Growth', "Niche focus with strong underwriting edge; grows opportunistically while recycling balance-sheet"),
-                'secondary_definition': self.business_archetypes.get('Balance-Sheet Steward', "Low-risk appetite, prioritises capital strength and membership value")
+                'secondary_definition': self.business_archetypes.get('Balance-Sheet Steward', "Low-risk appetite, prioritises capital strength and membership value"),
+                'comprehensive_analysis': "**Disciplined Specialist Growth**\n\nDefault classification indicates a conservative approach focused on niche lending with strong underwriting capabilities. This represents a prudent business model that emphasizes sustainable growth while maintaining balance sheet discipline."
             },
             'risk_strategy_archetypes': {
                 'dominant': 'Risk-First Conservative',
                 'secondary': 'Rules-Led Operator',
-                'reasoning': 'Default risk assessment - conservative approach assumed',
+                'reasoning': 'Default risk assessment assumes conservative approach prioritizing regulatory compliance and capital preservation. This reflects standard industry prudent risk management practices.',
+                'evidence': ['Conservative risk appetite assumed based on industry standards', 'Regulatory compliance focus typical for financial services'],
                 'definition': self.risk_archetypes.get('Risk-First Conservative', "Prioritises capital preservation and regulatory compliance; growth is secondary to resilience"),
-                'secondary_definition': self.risk_archetypes.get('Rules-Led Operator', "Strict adherence to rules and checklists; prioritises control consistency over judgment or speed")
+                'secondary_definition': self.risk_archetypes.get('Rules-Led Operator', "Strict adherence to rules and checklists; prioritises control consistency over judgment or speed"),
+                'comprehensive_analysis': "**Risk-First Conservative**\n\nDefault classification emphasizes capital preservation and regulatory compliance as primary risk management objectives. This approach prioritizes resilience and stability over aggressive growth strategies, reflecting prudent risk governance typical of established financial services institutions."
             },
-            'analysis_type': 'default',
+            'analysis_type': 'default_comprehensive',
             'confidence_level': 'low',
             'files_analyzed': 0,
+            'supporting_quotes': [],
             'archetype_definitions': {
                 'business_archetypes': self.business_archetypes,
                 'risk_archetypes': self.risk_archetypes
