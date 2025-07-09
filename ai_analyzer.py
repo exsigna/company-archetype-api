@@ -65,38 +65,22 @@ class AIArchetypeAnalyzer:
         logger.info(f"✅ AIArchetypeAnalyzer v2.0 completed. Client type: {self.client_type}")
     
     def _init_openai(self):
-        """Initialize OpenAI client"""
+        """Initialize OpenAI client - using v0.28.1 for stability"""
         try:
             api_key = os.environ.get('OPENAI_API_KEY')
             if not api_key:
                 logger.warning("⚠️ No OpenAI API key found")
                 return
                 
-            # Import and test OpenAI
+            # Import OpenAI v0.28.x (stable version)
             import openai
             logger.info(f"OpenAI module version: {openai.__version__}")
             
-            # Try different initialization approaches based on version
-            try:
-                # Modern OpenAI client (v1.x)
-                from openai import OpenAI
-                self.openai_client = OpenAI(api_key=api_key)
-                # Test the client with a simple call
-                logger.info("✅ OpenAI client initialized successfully")
-                self.client_type = "openai"
-                
-            except Exception as modern_error:
-                logger.warning(f"Modern OpenAI client failed: {modern_error}")
-                try:
-                    # Legacy OpenAI client (v0.x)
-                    openai.api_key = api_key
-                    self.openai_client = openai
-                    logger.info("✅ Legacy OpenAI client initialized")
-                    self.client_type = "openai_legacy"
-                    
-                except Exception as legacy_error:
-                    logger.warning(f"Legacy OpenAI client failed: {legacy_error}")
-                    raise Exception("Both modern and legacy OpenAI initialization failed")
+            # Set API key for v0.28.x
+            openai.api_key = api_key
+            self.openai_client = openai
+            self.client_type = "openai_v028"
+            logger.info("✅ OpenAI v0.28.x client initialized successfully")
                     
         except Exception as e:
             logger.warning(f"OpenAI setup failed: {e}")
@@ -121,7 +105,9 @@ class AIArchetypeAnalyzer:
             Analysis results
         """
         try:
-            if self.client_type in ["openai", "openai_legacy"]:
+            if self.client_type == "openai_v028":
+                return self._analyze_with_openai_v028(content, company_name, company_number, extracted_content)
+            elif self.client_type in ["openai", "openai_legacy"]:
                 return self._analyze_with_openai(content, company_name, company_number, extracted_content)
             else:
                 return self._analyze_with_fallback(content, company_name, company_number, extracted_content)
@@ -132,46 +118,57 @@ class AIArchetypeAnalyzer:
     
     def _analyze_with_openai(self, content: str, company_name: str, company_number: str, 
                            extracted_content: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
-        """Analyze using OpenAI API"""
+        """Analyze using OpenAI API (backup method for v1.x)"""
         try:
             # Sample content for analysis
             sample_content = content[:15000] if len(content) > 15000 else content
             
             prompt = self._create_analysis_prompt(sample_content, company_name)
             
-            if self.client_type == "openai":
-                # Modern OpenAI client
-                response = self.openai_client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "You are an expert business strategy analyst."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.3,
-                    max_tokens=1000
-                )
-                analysis_text = response.choices[0].message.content
-                
-            elif self.client_type == "openai_legacy":
-                # Legacy OpenAI client
-                response = self.openai_client.ChatCompletion.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "You are an expert business strategy analyst."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.3,
-                    max_tokens=1000
-                )
-                analysis_text = response.choices[0].message.content
-            
-            else:
-                raise Exception(f"Unknown OpenAI client type: {self.client_type}")
+            # Legacy OpenAI client
+            response = self.openai_client.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are an expert business strategy analyst specializing in financial services."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=1000
+            )
+            analysis_text = response.choices[0].message.content
             
             return self._parse_ai_response(analysis_text, "openai", extracted_content)
             
         except Exception as e:
             logger.error(f"OpenAI analysis failed: {e}")
+            logger.info("Falling back to pattern analysis")
+            return self._analyze_with_fallback(content, company_name, company_number, extracted_content)
+
+    def _analyze_with_openai_v028(self, content: str, company_name: str, company_number: str, 
+                                extracted_content: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
+        """Analyze using OpenAI API v0.28.x"""
+        try:
+            # Sample content for analysis
+            sample_content = content[:15000] if len(content) > 15000 else content
+            
+            prompt = self._create_analysis_prompt(sample_content, company_name)
+            
+            # Use v0.28.x API format
+            response = self.openai_client.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are an expert business strategy analyst specializing in financial services."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=1000
+            )
+            
+            analysis_text = response.choices[0].message.content
+            return self._parse_ai_response(analysis_text, "openai_v028", extracted_content)
+            
+        except Exception as e:
+            logger.error(f"OpenAI v0.28.x analysis failed: {e}")
             logger.info("Falling back to pattern analysis")
             return self._analyze_with_fallback(content, company_name, company_number, extracted_content)
     
