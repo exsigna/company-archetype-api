@@ -24,9 +24,8 @@ numpy==1.24.4
 openai==1.3.5
 anthropic==0.7.7
 
-# Database support
+# Database support (SQLite only - built into Python)
 sqlalchemy==2.0.23
-PyMySQL==1.1.0
 
 # System monitoring
 psutil==5.9.6
