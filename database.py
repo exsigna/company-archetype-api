@@ -2,6 +2,7 @@
 """
 Database module for Strategic Analysis API
 Handles storage and retrieval of analysis results
+FIXED: Added debug logging and table name detection
 """
 
 import os
@@ -39,6 +40,7 @@ class AnalysisDatabase:
         
         try:
             self._create_tables()
+            self._detect_table_structure()
             logger.info(f"✅ Database initialized: {self.db_path}")
         except Exception as e:
             logger.error(f"❌ Database initialization failed: {e}")
@@ -50,12 +52,64 @@ class AnalysisDatabase:
         conn.row_factory = sqlite3.Row  # Enable column access by name
         return conn
     
+    def _detect_table_structure(self):
+        """Detect which table contains the analysis data"""
+        try:
+            with self._get_connection() as conn:
+                # Get all table names
+                tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+                table_names = [table[0] for table in tables]
+                
+                logger.info(f"🔍 DEBUG: Available tables: {table_names}")
+                
+                # Check which table has data
+                for table_name in table_names:
+                    try:
+                        count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+                        logger.info(f"🔍 DEBUG: Table '{table_name}' has {count} records")
+                        
+                        if count > 0:
+                            # Check table structure
+                            columns = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+                            column_names = [col[1] for col in columns]
+                            logger.info(f"🔍 DEBUG: Table '{table_name}' columns: {column_names}")
+                    except Exception as e:
+                        logger.warning(f"🔍 DEBUG: Error checking table {table_name}: {e}")
+                
+        except Exception as e:
+            logger.error(f"Error detecting table structure: {e}")
+    
     def _create_tables(self):
         """Create necessary database tables"""
         try:
             with self._get_connection() as conn:
+                # Create the analyses table (this is what the current code expects)
                 conn.execute('''
                     CREATE TABLE IF NOT EXISTS analyses (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        company_number TEXT NOT NULL,
+                        company_name TEXT,
+                        analysis_date TEXT NOT NULL,
+                        years_analyzed TEXT,  -- JSON array
+                        files_processed INTEGER DEFAULT 0,
+                        business_strategy_dominant TEXT,
+                        business_strategy_secondary TEXT,
+                        business_strategy_reasoning TEXT,
+                        risk_strategy_dominant TEXT,
+                        risk_strategy_secondary TEXT,
+                        risk_strategy_reasoning TEXT,
+                        analysis_type TEXT DEFAULT 'unknown',
+                        confidence_level TEXT DEFAULT 'medium',
+                        status TEXT DEFAULT 'completed',
+                        raw_response TEXT,  -- Full JSON response
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
+                
+                # Also create analysis_results table for compatibility
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS analysis_results (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         company_number TEXT NOT NULL,
                         company_name TEXT,
@@ -81,6 +135,10 @@ class AnalysisDatabase:
                 conn.execute('CREATE INDEX IF NOT EXISTS idx_company_number ON analyses(company_number)')
                 conn.execute('CREATE INDEX IF NOT EXISTS idx_analysis_date ON analyses(analysis_date)')
                 conn.execute('CREATE INDEX IF NOT EXISTS idx_company_name ON analyses(company_name)')
+                
+                conn.execute('CREATE INDEX IF NOT EXISTS idx_company_number_results ON analysis_results(company_number)')
+                conn.execute('CREATE INDEX IF NOT EXISTS idx_analysis_date_results ON analysis_results(analysis_date)')
+                conn.execute('CREATE INDEX IF NOT EXISTS idx_company_name_results ON analysis_results(company_name)')
                 
                 conn.commit()
                 logger.info("Database tables created successfully")
@@ -136,19 +194,21 @@ class AnalysisDatabase:
                 raw_response = json.dumps(analysis_data)
                 
                 with self._get_connection() as conn:
-                    cursor = conn.execute('''
-                        INSERT INTO analyses (
+                    # Store in both tables for compatibility
+                    for table_name in ['analyses', 'analysis_results']:
+                        cursor = conn.execute(f'''
+                            INSERT INTO {table_name} (
+                                company_number, company_name, analysis_date, years_analyzed,
+                                files_processed, business_strategy_dominant, business_strategy_secondary,
+                                business_strategy_reasoning, risk_strategy_dominant, risk_strategy_secondary,
+                                risk_strategy_reasoning, analysis_type, confidence_level, status, raw_response
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (
                             company_number, company_name, analysis_date, years_analyzed,
                             files_processed, business_strategy_dominant, business_strategy_secondary,
                             business_strategy_reasoning, risk_strategy_dominant, risk_strategy_secondary,
                             risk_strategy_reasoning, analysis_type, confidence_level, status, raw_response
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        company_number, company_name, analysis_date, years_analyzed,
-                        files_processed, business_strategy_dominant, business_strategy_secondary,
-                        business_strategy_reasoning, risk_strategy_dominant, risk_strategy_secondary,
-                        risk_strategy_reasoning, analysis_type, confidence_level, status, raw_response
-                    ))
+                        ))
                     
                     record_id = cursor.lastrowid
                     conn.commit()
@@ -162,7 +222,7 @@ class AnalysisDatabase:
     
     def get_analysis_by_company(self, company_number: str) -> List[Dict[str, Any]]:
         """
-        Get all analyses for a company
+        Get all analyses for a company - ENHANCED WITH DEBUG LOGGING
         
         Args:
             company_number: Company number
@@ -171,14 +231,76 @@ class AnalysisDatabase:
             List of analysis records
         """
         try:
+            logger.info(f"🔍 DEBUG: Searching for company_number: '{company_number}' (type: {type(company_number)})")
+            
             with self._get_connection() as conn:
-                rows = conn.execute('''
-                    SELECT * FROM analyses 
-                    WHERE company_number = ? 
-                    ORDER BY analysis_date DESC
-                ''', (company_number,)).fetchall()
+                # Check both tables and get total counts
+                tables_to_check = ['analysis_results', 'analyses']
                 
-                return [dict(row) for row in rows]
+                for table_name in tables_to_check:
+                    try:
+                        # Check if table exists
+                        table_check = conn.execute(
+                            "SELECT name FROM sqlite_master WHERE type='table' AND name=?", 
+                            (table_name,)
+                        ).fetchone()
+                        
+                        if table_check:
+                            # Get total count in table
+                            total_count = conn.execute(f'SELECT COUNT(*) FROM {table_name}').fetchone()[0]
+                            logger.info(f"🔍 DEBUG: Table '{table_name}' exists with {total_count} total records")
+                            
+                            # Get sample company numbers
+                            sample_numbers = conn.execute(f'SELECT DISTINCT company_number FROM {table_name} LIMIT 5').fetchall()
+                            logger.info(f"🔍 DEBUG: Sample company numbers in '{table_name}': {[row[0] for row in sample_numbers]}")
+                            
+                            # Try exact match
+                            exact_match = conn.execute(f'SELECT COUNT(*) FROM {table_name} WHERE company_number = ?', (company_number,)).fetchone()[0]
+                            logger.info(f"🔍 DEBUG: Exact matches in '{table_name}' for '{company_number}': {exact_match}")
+                            
+                            # Try without leading zero
+                            company_number_no_zero = company_number.lstrip('0')
+                            no_zero_match = conn.execute(f'SELECT COUNT(*) FROM {table_name} WHERE company_number = ?', (company_number_no_zero,)).fetchone()[0]
+                            logger.info(f"🔍 DEBUG: Matches in '{table_name}' for '{company_number_no_zero}' (no leading zero): {no_zero_match}")
+                            
+                            # Try LIKE search
+                            like_pattern = f'%{company_number.lstrip("0")}%'
+                            like_match = conn.execute(f'SELECT COUNT(*) FROM {table_name} WHERE company_number LIKE ?', (like_pattern,)).fetchone()[0]
+                            logger.info(f"🔍 DEBUG: LIKE matches in '{table_name}' for pattern '{like_pattern}': {like_match}")
+                            
+                            # If we found matches, return them
+                            if exact_match > 0:
+                                rows = conn.execute(f'''
+                                    SELECT * FROM {table_name} 
+                                    WHERE company_number = ? 
+                                    ORDER BY analysis_date DESC
+                                ''', (company_number,)).fetchall()
+                                logger.info(f"🔍 DEBUG: Returning {len(rows)} results from '{table_name}' (exact match)")
+                                return [dict(row) for row in rows]
+                            elif no_zero_match > 0:
+                                rows = conn.execute(f'''
+                                    SELECT * FROM {table_name} 
+                                    WHERE company_number = ? 
+                                    ORDER BY analysis_date DESC
+                                ''', (company_number_no_zero,)).fetchall()
+                                logger.info(f"🔍 DEBUG: Returning {len(rows)} results from '{table_name}' (no leading zero)")
+                                return [dict(row) for row in rows]
+                            elif like_match > 0:
+                                rows = conn.execute(f'''
+                                    SELECT * FROM {table_name} 
+                                    WHERE company_number LIKE ? 
+                                    ORDER BY analysis_date DESC
+                                ''', (like_pattern,)).fetchall()
+                                logger.info(f"🔍 DEBUG: Returning {len(rows)} results from '{table_name}' (LIKE match)")
+                                return [dict(row) for row in rows]
+                        else:
+                            logger.info(f"🔍 DEBUG: Table '{table_name}' does not exist")
+                    
+                    except Exception as table_error:
+                        logger.warning(f"🔍 DEBUG: Error checking table '{table_name}': {table_error}")
+                
+                logger.info(f"🔍 DEBUG: No matches found in any table for company number '{company_number}'")
+                return []
                 
         except Exception as e:
             logger.error(f"Error getting analyses for company {company_number}: {e}")
@@ -196,13 +318,29 @@ class AnalysisDatabase:
         """
         try:
             with self._get_connection() as conn:
-                rows = conn.execute('''
-                    SELECT * FROM analyses 
-                    ORDER BY created_at DESC 
-                    LIMIT ?
-                ''', (limit,)).fetchall()
+                # Try both table names
+                for table_name in ['analysis_results', 'analyses']:
+                    try:
+                        table_check = conn.execute(
+                            "SELECT name FROM sqlite_master WHERE type='table' AND name=?", 
+                            (table_name,)
+                        ).fetchone()
+                        
+                        if table_check:
+                            rows = conn.execute(f'''
+                                SELECT * FROM {table_name} 
+                                ORDER BY created_at DESC 
+                                LIMIT ?
+                            ''', (limit,)).fetchall()
+                            
+                            if rows:
+                                logger.info(f"🔍 DEBUG: Returning {len(rows)} recent analyses from '{table_name}'")
+                                return [dict(row) for row in rows]
+                    except Exception as e:
+                        logger.warning(f"Error querying table {table_name}: {e}")
+                        continue
                 
-                return [dict(row) for row in rows]
+                return []
                 
         except Exception as e:
             logger.error(f"Error getting recent analyses: {e}")
@@ -222,17 +360,33 @@ class AnalysisDatabase:
             search_pattern = f"%{search_term}%"
             
             with self._get_connection() as conn:
-                rows = conn.execute('''
-                    SELECT DISTINCT company_number, company_name, 
-                           COUNT(*) as analysis_count,
-                           MAX(analysis_date) as latest_analysis
-                    FROM analyses 
-                    WHERE company_name LIKE ? OR company_number LIKE ?
-                    GROUP BY company_number, company_name
-                    ORDER BY latest_analysis DESC
-                ''', (search_pattern, search_pattern)).fetchall()
+                # Try both table names
+                for table_name in ['analysis_results', 'analyses']:
+                    try:
+                        table_check = conn.execute(
+                            "SELECT name FROM sqlite_master WHERE type='table' AND name=?", 
+                            (table_name,)
+                        ).fetchone()
+                        
+                        if table_check:
+                            rows = conn.execute(f'''
+                                SELECT DISTINCT company_number, company_name, 
+                                       COUNT(*) as analysis_count,
+                                       MAX(analysis_date) as latest_analysis
+                                FROM {table_name} 
+                                WHERE company_name LIKE ? OR company_number LIKE ?
+                                GROUP BY company_number, company_name
+                                ORDER BY latest_analysis DESC
+                            ''', (search_pattern, search_pattern)).fetchall()
+                            
+                            if rows:
+                                logger.info(f"🔍 DEBUG: Found {len(rows)} company matches in '{table_name}'")
+                                return [dict(row) for row in rows]
+                    except Exception as e:
+                        logger.warning(f"Error searching in table {table_name}: {e}")
+                        continue
                 
-                return [dict(row) for row in rows]
+                return []
                 
         except Exception as e:
             logger.error(f"Error searching companies: {e}")
@@ -252,19 +406,24 @@ class AnalysisDatabase:
         with self.lock:
             try:
                 with self._get_connection() as conn:
-                    cursor = conn.execute('''
-                        DELETE FROM analyses 
-                        WHERE id = ? AND company_number = ?
-                    ''', (analysis_id, company_number))
+                    deleted = False
+                    
+                    # Try both tables
+                    for table_name in ['analysis_results', 'analyses']:
+                        try:
+                            cursor = conn.execute(f'''
+                                DELETE FROM {table_name} 
+                                WHERE id = ? AND company_number = ?
+                            ''', (analysis_id, company_number))
+                            
+                            if cursor.rowcount > 0:
+                                deleted = True
+                                logger.info(f"Deleted analysis {analysis_id} from {table_name}")
+                        except Exception as e:
+                            logger.warning(f"Error deleting from {table_name}: {e}")
                     
                     conn.commit()
-                    
-                    if cursor.rowcount > 0:
-                        logger.info(f"Deleted analysis {analysis_id} for company {company_number}")
-                        return True
-                    else:
-                        logger.warning(f"No analysis found with ID {analysis_id} for company {company_number}")
-                        return False
+                    return deleted
                         
             except Exception as e:
                 logger.error(f"Error deleting analysis {analysis_id}: {e}")
@@ -313,13 +472,18 @@ class AnalysisDatabase:
                 if ids_to_delete:
                     with self._get_connection() as conn:
                         for analysis_id in ids_to_delete:
-                            cursor = conn.execute('''
-                                DELETE FROM analyses 
-                                WHERE id = ? AND company_number = ?
-                            ''', (analysis_id, company_number))
-                            
-                            if cursor.rowcount > 0:
-                                deleted_count += 1
+                            # Try both tables
+                            for table_name in ['analysis_results', 'analyses']:
+                                try:
+                                    cursor = conn.execute(f'''
+                                        DELETE FROM {table_name} 
+                                        WHERE id = ? AND company_number = ?
+                                    ''', (analysis_id, company_number))
+                                    
+                                    if cursor.rowcount > 0:
+                                        deleted_count += 1
+                                except Exception as e:
+                                    logger.warning(f"Error deleting from {table_name}: {e}")
                         
                         conn.commit()
                 
@@ -339,32 +503,47 @@ class AnalysisDatabase:
         """
         try:
             with self._get_connection() as conn:
-                # Total analyses
-                total_count = conn.execute('SELECT COUNT(*) FROM analyses').fetchone()[0]
+                stats = {}
                 
-                # Unique companies
-                company_count = conn.execute('SELECT COUNT(DISTINCT company_number) FROM analyses').fetchone()[0]
+                # Check both tables
+                for table_name in ['analysis_results', 'analyses']:
+                    try:
+                        table_check = conn.execute(
+                            "SELECT name FROM sqlite_master WHERE type='table' AND name=?", 
+                            (table_name,)
+                        ).fetchone()
+                        
+                        if table_check:
+                            # Total analyses
+                            total_count = conn.execute(f'SELECT COUNT(*) FROM {table_name}').fetchone()[0]
+                            
+                            # Unique companies
+                            company_count = conn.execute(f'SELECT COUNT(DISTINCT company_number) FROM {table_name}').fetchone()[0]
+                            
+                            # Recent activity (last 30 days)
+                            recent_count = conn.execute(f'''
+                                SELECT COUNT(*) FROM {table_name} 
+                                WHERE created_at >= datetime('now', '-30 days')
+                            ''').fetchone()[0]
+                            
+                            # Analysis types
+                            type_stats = conn.execute(f'''
+                                SELECT analysis_type, COUNT(*) 
+                                FROM {table_name} 
+                                GROUP BY analysis_type
+                            ''').fetchall()
+                            
+                            stats[table_name] = {
+                                'total_analyses': total_count,
+                                'unique_companies': company_count,
+                                'recent_analyses_30_days': recent_count,
+                                'analysis_types': dict(type_stats)
+                            }
+                    except Exception as e:
+                        stats[table_name] = {'error': str(e)}
                 
-                # Recent activity (last 30 days)
-                recent_count = conn.execute('''
-                    SELECT COUNT(*) FROM analyses 
-                    WHERE created_at >= datetime('now', '-30 days')
-                ''').fetchone()[0]
-                
-                # Analysis types
-                type_stats = conn.execute('''
-                    SELECT analysis_type, COUNT(*) 
-                    FROM analyses 
-                    GROUP BY analysis_type
-                ''').fetchall()
-                
-                return {
-                    'total_analyses': total_count,
-                    'unique_companies': company_count,
-                    'recent_analyses_30_days': recent_count,
-                    'analysis_types': dict(type_stats),
-                    'database_path': self.db_path
-                }
+                stats['database_path'] = self.db_path
+                return stats
                 
         except Exception as e:
             logger.error(f"Error getting database statistics: {e}")
