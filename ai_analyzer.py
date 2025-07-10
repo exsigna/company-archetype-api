@@ -70,9 +70,9 @@ class CompleteAIAnalyzer:
         self.anthropic_client = None
         self.client_type = "uninitialized"
         
-        # Model configuration optimized for Render
-        self.primary_model = "gpt-4-turbo-preview"
-        self.fallback_model = "gpt-4-1106-preview"
+        # Model configuration optimized for Render - Updated to stable GPT-4 Turbo
+        self.primary_model = "gpt-4-turbo"
+        self.fallback_model = "gpt-4-turbo-2024-04-09"
         self.max_output_tokens = 4096
         self.max_retries = 2
         self.base_retry_delay = 1.5
