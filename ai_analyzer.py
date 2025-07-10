@@ -2,6 +2,7 @@
 """
 Enhanced AI Archetype Analyzer for Board-Level Strategic Analysis
 Delivers structured report format with dominant/secondary archetypes and detailed rationale
+FIXED: Proper archetype name extraction and fallback logic
 """
 
 import os
@@ -25,7 +26,7 @@ class ExecutiveAIAnalyzer:
         self.client_type = "fallback"
         self.openai_client = None
         
-        logger.info("🏛️ Executive AI Analyzer v4.1 - Enhanced Word Count Engine")
+        logger.info("🏛️ Executive AI Analyzer v4.2 - Enhanced Archetype Extraction Engine")
         
         # Initialize AI providers
         self._init_openai()
@@ -187,7 +188,7 @@ class ExecutiveAIAnalyzer:
             }
         }
         
-        logger.info(f"✅ Executive AI Analyzer v4.1 initialized. Analysis engine: {self.client_type}")
+        logger.info(f"✅ Executive AI Analyzer v4.2 initialized. Analysis engine: {self.client_type}")
     
     def _init_openai(self):
         """Initialize OpenAI with enhanced error handling"""
@@ -785,13 +786,51 @@ Use EXACT archetype names from the provided lists only. Include specific quotes 
         }
     
     def _create_structured_report(self, analysis: Dict[str, Any], company_name: str, company_number: str) -> Dict[str, Any]:
-        """Transform analysis into final structured report format"""
+        """
+        FIXED: Transform analysis into final structured report format with proper archetype extraction
+        """
         
         # Extract structured components
         business_strategy = analysis.get('business_strategy', {})
         risk_strategy = analysis.get('risk_strategy', {})
         swot_analysis = analysis.get('swot_analysis', {})
         metadata = analysis.get('analysis_metadata', {})
+        
+        # FIXED: Extract archetype names with fallback logic for empty strings
+        business_dominant = business_strategy.get('dominant', '').strip()
+        if not business_dominant:
+            # Try to extract from reasoning text or use default
+            business_dominant = self._extract_archetype_from_reasoning(
+                business_strategy.get('dominant_rationale', ''), 
+                self.business_archetypes, 
+                'Disciplined Specialist Growth'
+            )
+        
+        business_secondary = business_strategy.get('secondary', '').strip()
+        if not business_secondary:
+            # Get complementary archetype based on dominant
+            business_secondary = self._get_complementary_archetype(business_dominant, self.business_archetypes)
+        
+        risk_dominant = risk_strategy.get('dominant', '').strip()
+        if not risk_dominant:
+            # Try to extract from reasoning text or use default
+            risk_dominant = self._extract_archetype_from_reasoning(
+                risk_strategy.get('dominant_rationale', ''), 
+                self.risk_archetypes, 
+                'Risk-First Conservative'
+            )
+        
+        risk_secondary = risk_strategy.get('secondary', '').strip()
+        if not risk_secondary:
+            # Get complementary archetype based on dominant
+            risk_secondary = self._get_complementary_archetype(risk_dominant, self.risk_archetypes)
+        
+        # Log what we're using for debugging
+        logger.info(f"🔧 Final archetype assignments for {company_name}:")
+        logger.info(f"   Business Dominant: {business_dominant}")
+        logger.info(f"   Business Secondary: {business_secondary}")
+        logger.info(f"   Risk Dominant: {risk_dominant}")
+        logger.info(f"   Risk Secondary: {risk_secondary}")
         
         # Create final structured report
         return {
@@ -803,9 +842,9 @@ Use EXACT archetype names from the provided lists only. Include specific quotes 
             
             # Business Strategy Archetype section
             'business_strategy': {
-                'dominant': business_strategy.get('dominant', ''),
+                'dominant': business_dominant,  # FIXED: Now guaranteed to have a value
                 'dominant_reasoning': business_strategy.get('dominant_rationale', ''),
-                'secondary': business_strategy.get('secondary', ''),
+                'secondary': business_secondary,  # FIXED: Now guaranteed to have a value
                 'secondary_reasoning': business_strategy.get('secondary_rationale', ''),
                 'material_changes': business_strategy.get('material_changes', 'No material changes identified'),
                 'evidence_quotes': business_strategy.get('evidence_quotes', [])
@@ -813,9 +852,9 @@ Use EXACT archetype names from the provided lists only. Include specific quotes 
             
             # Risk Strategy Archetype section
             'risk_strategy': {
-                'dominant': risk_strategy.get('dominant', ''),
+                'dominant': risk_dominant,  # FIXED: Now guaranteed to have a value
                 'dominant_reasoning': risk_strategy.get('dominant_rationale', ''),
-                'secondary': risk_strategy.get('secondary', ''),
+                'secondary': risk_secondary,  # FIXED: Now guaranteed to have a value
                 'secondary_reasoning': risk_strategy.get('secondary_rationale', ''),
                 'material_changes': risk_strategy.get('material_changes', 'No material changes identified'),
                 'evidence_quotes': risk_strategy.get('evidence_quotes', [])
@@ -827,11 +866,55 @@ Use EXACT archetype names from the provided lists only. Include specific quotes 
             # Analysis metadata
             'analysis_metadata': {
                 'confidence_level': metadata.get('confidence_level', 'medium'),
-                'analysis_type': 'structured_archetype_report_v4.1',
+                'analysis_type': 'structured_archetype_report_v4.2',
                 'analysis_timestamp': metadata.get('analysis_timestamp', datetime.now().isoformat()),
-                'methodology': 'Enhanced archetype classification with exact word count rationale and evidence-based SWOT analysis'
+                'methodology': 'Enhanced archetype classification with exact word count rationale and intelligent archetype extraction'
             }
         }
+    
+    def _extract_archetype_from_reasoning(self, reasoning_text: str, archetype_dict: Dict[str, Dict[str, Any]], default: str) -> str:
+        """
+        FIXED: Extract archetype name from reasoning text if name field is empty
+        """
+        if not reasoning_text:
+            return default
+        
+        # Look for archetype names mentioned in the reasoning
+        reasoning_lower = reasoning_text.lower()
+        
+        # Check for exact matches first
+        for archetype_name in archetype_dict.keys():
+            if archetype_name.lower() in reasoning_lower:
+                logger.info(f"🔍 Found exact archetype match: {archetype_name}")
+                return archetype_name
+        
+        # Check for partial matches of key words
+        for archetype_name in archetype_dict.keys():
+            # Split archetype name and check for key words
+            name_parts = archetype_name.lower().replace('-', ' ').split()
+            # Look for significant words (longer than 3 characters)
+            key_words = [part for part in name_parts if len(part) > 3]
+            if key_words and any(word in reasoning_lower for word in key_words):
+                logger.info(f"🔍 Found partial archetype match: {archetype_name}")
+                return archetype_name
+        
+        # Special case matching for common patterns
+        if 'specialist' in reasoning_lower or 'disciplined' in reasoning_lower:
+            return 'Disciplined Specialist Growth'
+        elif 'service' in reasoning_lower and ('differentiator' in reasoning_lower or 'customer' in reasoning_lower):
+            return 'Service-Driven Differentiator'
+        elif 'conservative' in reasoning_lower and 'risk' in reasoning_lower:
+            return 'Risk-First Conservative'
+        elif 'rules' in reasoning_lower or ('operator' in reasoning_lower and 'process' in reasoning_lower):
+            return 'Rules-Led Operator'
+        elif 'technology' in reasoning_lower or 'tech' in reasoning_lower or 'productivity' in reasoning_lower:
+            return 'Tech-Productivity Accelerator'
+        elif 'resilience' in reasoning_lower or 'architect' in reasoning_lower:
+            return 'Resilience-Focused Architect'
+        
+        # If no match found, return default
+        logger.warning(f"Could not extract archetype from reasoning, using default: {default}")
+        return default
     
     def _get_minimal_analysis(self) -> Dict[str, Any]:
         """Minimal analysis when content is insufficient"""
@@ -876,7 +959,7 @@ Use EXACT archetype names from the provided lists only. Include specific quotes 
             
             'analysis_metadata': {
                 'confidence_level': 'emergency_low',
-                'analysis_type': 'emergency_structured_assessment_v4.1',
+                'analysis_type': 'emergency_structured_assessment_v4.2',
                 'analysis_timestamp': datetime.now().isoformat(),
                 'processing_note': f'Emergency assessment due to: {error_message}',
                 'recommendation': 'Immediate comprehensive strategic analysis recommended with enhanced documentation'
