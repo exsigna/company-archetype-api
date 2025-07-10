@@ -220,6 +220,15 @@ class CompleteAIAnalyzer:
                 return False
             
             logger.info("🔧 Attempting OpenAI client initialization...")
+        try:
+            import openai
+            self.logger.info(f"📦 openai version: {openai.__version__}")
+            from openai import OpenAI
+            self.client = OpenAI()
+            self.logger.info("✅ OpenAI client created")
+            self.client_type = "openai"
+        except Exception as e:
+            self.logger.warning(f"⚠️ OpenAI initialization failed: {e}")
         import openai
         self.logger.info(f"📦 openai version: {openai.__version__}")
             
