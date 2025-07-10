@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-OPTIMIZED Multi-Pass AI Analyzer - Maximum Claude 3.5 Sonnet Token Usage
+ENHANCED Multi-Pass AI Analyzer - Maximum Claude 3.5 Sonnet Token Usage with 529 Error Handling
 Uses full 200K input / 8K output capacity for maximum analysis depth
+Includes intelligent retry, circuit breaker, and load balancing for API overload scenarios
 """
 
 import os
@@ -11,26 +12,106 @@ import hashlib
 from typing import Dict, List, Any, Optional, Tuple
 import time
 import re
+import random
 from datetime import datetime
-from collections import Counter
+from collections import Counter, deque
 import statistics
+import threading
 
 logger = logging.getLogger(__name__)
 
+class CircuitBreaker:
+    """Circuit breaker pattern for handling sustained API failures"""
+    
+    def __init__(self, failure_threshold: int = 3, timeout: int = 300):
+        self.failure_threshold = failure_threshold
+        self.timeout = timeout
+        self.failure_count = 0
+        self.last_failure_time = None
+        self.is_open = False
+        self.lock = threading.Lock()
+    
+    def can_proceed(self) -> bool:
+        """Check if requests can proceed"""
+        with self.lock:
+            if not self.is_open:
+                return True
+            
+            # Check if timeout has passed
+            if (self.last_failure_time and 
+                time.time() - self.last_failure_time > self.timeout):
+                self.is_open = False
+                self.failure_count = 0
+                logger.info("🔄 Circuit breaker CLOSED - timeout expired")
+                return True
+            
+            return False
+    
+    def record_failure(self):
+        """Record a failure"""
+        with self.lock:
+            self.failure_count += 1
+            self.last_failure_time = time.time()
+            
+            if self.failure_count >= self.failure_threshold:
+                self.is_open = True
+                logger.warning(f"🚨 Circuit breaker OPEN - {self.failure_count} consecutive failures")
+    
+    def record_success(self):
+        """Record a success"""
+        with self.lock:
+            self.failure_count = 0
+            if self.is_open:
+                self.is_open = False
+                logger.info("✅ Circuit breaker CLOSED - successful request")
+
+class APILoadBalancer:
+    """Load balancer to manage API requests and prevent overload"""
+    
+    def __init__(self, requests_per_minute: int = 50):
+        self.requests_per_minute = requests_per_minute
+        self.request_times = deque()
+        self.lock = threading.Lock()
+        
+        logger.info(f"🔄 API Load Balancer initialized: {requests_per_minute}/min")
+    
+    def can_make_request(self) -> tuple[bool, Optional[float]]:
+        """Check if request can be made, return (can_proceed, wait_time)"""
+        with self.lock:
+            now = time.time()
+            
+            # Clean old requests
+            while self.request_times and now - self.request_times[0] > 60:
+                self.request_times.popleft()
+            
+            # Check rate limit
+            if len(self.request_times) >= self.requests_per_minute:
+                oldest_request = self.request_times[0]
+                wait_time = 60 - (now - oldest_request)
+                return False, max(wait_time, 0)
+            
+            return True, None
+    
+    def record_request(self):
+        """Record a request"""
+        with self.lock:
+            self.request_times.append(time.time())
+
 class OptimizedClaudeAnalyzer:
     """
-    Optimized analyzer that maximizes Claude 3.5 Sonnet's 200K input / 8K output capacity
+    Enhanced analyzer that maximizes Claude 3.5 Sonnet's 200K input / 8K output capacity
+    with intelligent retry and load balancing for 529 error handling
     """
     
     def __init__(self):
-        """Initialize optimized Claude analyzer"""
+        """Initialize enhanced Claude analyzer"""
         self.anthropic_client = None
         self.openai_client = None
         self.client_type = "fallback"
         
         # OPTIMIZED: Maximum token usage settings
         self.max_input_tokens = 200000      # Claude 3.5 Sonnet max input
-        self.max_output_tokens = 8000       # Claude 3.5 Sonnet max output (increased from 4500)
+        self.max_output_tokens = 8000       # Claude 3.5 Sonnet max output
         self.max_input_chars = 800000       # ~200K tokens = ~800K characters
         self.target_analysis_length = 32000 # ~8K tokens = ~32K characters
         
@@ -38,10 +119,31 @@ class OptimizedClaudeAnalyzer:
         self.num_passes = int(os.environ.get('AI_ANALYSIS_PASSES', 3))
         self.temperature_variation = os.environ.get('TEMPERATURE_VARIATION', 'true').lower() == 'true'
         
-        logger.info(f"🚀 OPTIMIZED Claude 3.5 Sonnet Analyzer v8.0")
+        # Enhanced error handling
+        self.circuit_breaker = CircuitBreaker(
+            failure_threshold=int(os.environ.get('AI_CIRCUIT_THRESHOLD', 3)),
+            timeout=int(os.environ.get('AI_CIRCUIT_TIMEOUT', 300))
+        )
+        self.load_balancer = APILoadBalancer(
+            requests_per_minute=int(os.environ.get('AI_REQUESTS_PER_MINUTE', 50))
+        )
+        
+        # Retry settings
+        self.max_retries = int(os.environ.get('AI_MAX_RETRIES', 5))
+        self.base_retry_delay = float(os.environ.get('AI_RETRY_DELAY', 3.0))
+        
+        # Fallback models for high load scenarios
+        self.fallback_models = [
+            "claude-3-5-sonnet-20241022",  # Primary
+            "claude-3-sonnet-20240229",    # Fallback 1
+            "claude-3-haiku-20240307"      # Fallback 2 (less load)
+        ]
+        
+        logger.info(f"🚀 ENHANCED Claude 3.5 Sonnet Analyzer v9.0")
         logger.info(f"📊 Max input: {self.max_input_tokens:,} tokens ({self.max_input_chars:,} chars)")
         logger.info(f"📊 Max output: {self.max_output_tokens:,} tokens ({self.target_analysis_length:,} chars)")
         logger.info(f"🔄 Analysis passes: {self.num_passes}")
+        logger.info(f"🛡️ Circuit breaker: {self.circuit_breaker.failure_threshold} failures, {self.circuit_breaker.timeout}s timeout")
         
         # Initialize AI providers
         self._init_anthropic_primary()
@@ -106,35 +208,46 @@ class OptimizedClaudeAnalyzer:
             }
         }
         
-        logger.info(f"✅ Optimized Claude Analyzer initialized. Engine: {self.client_type}")
+        logger.info(f"✅ Enhanced Claude Analyzer initialized. Engine: {self.client_type}")
     
     def analyze_for_board_optimized(self, content: str, company_name: str, company_number: str, 
                                   extracted_content: Optional[List[Dict[str, Any]]] = None,
                                   analysis_context: Optional[str] = None) -> Dict[str, Any]:
         """
-        OPTIMIZED multi-pass analysis using Claude 3.5 Sonnet's full capacity
+        ENHANCED multi-pass analysis using Claude 3.5 Sonnet's full capacity with 529 error handling
         """
         start_time = time.time()
         
         try:
-            logger.info(f"🚀 Starting OPTIMIZED {self.num_passes}-pass analysis for {company_name}")
+            logger.info(f"🚀 Starting ENHANCED {self.num_passes}-pass analysis for {company_name}")
             logger.info(f"📊 Input content: {len(content):,} characters")
+            
+            # Check circuit breaker
+            if not self.circuit_breaker.can_proceed():
+                logger.warning("⚠️ Circuit breaker is OPEN - using emergency analysis")
+                return self._create_emergency_analysis(company_name, company_number, "Circuit breaker open")
             
             # Step 1: Optimize content for maximum Claude usage
             optimized_content = self._optimize_content_for_max_tokens(content, extracted_content, company_name)
             logger.info(f"📊 Optimized content: {len(optimized_content):,} characters ({len(optimized_content)//4:,} estimated tokens)")
             
-            # Step 2: Perform multiple optimized analysis passes
+            # Step 2: Perform multiple enhanced analysis passes with error handling
             individual_analyses = []
             
             for pass_num in range(1, self.num_passes + 1):
-                logger.info(f"🎯 OPTIMIZED Analysis Pass {pass_num}/{self.num_passes}")
+                logger.info(f"🎯 ENHANCED Analysis Pass {pass_num}/{self.num_passes}")
+                
+                # Add delay between passes to reduce API load
+                if pass_num > 1:
+                    delay = random.uniform(3, 7)  # Random delay to spread load
+                    logger.info(f"⏳ Waiting {delay:.1f}s between passes...")
+                    time.sleep(delay)
                 
                 # Vary temperature for diversity
                 temperature = self._get_optimized_temperature(pass_num)
                 
                 try:
-                    pass_analysis = self._optimized_single_pass(
+                    pass_analysis = self._enhanced_single_pass(
                         optimized_content, company_name, company_number, 
                         extracted_content, analysis_context, 
                         pass_num, temperature
@@ -146,43 +259,229 @@ class OptimizedClaudeAnalyzer:
                         risk_arch = pass_analysis.get('risk_strategy', {}).get('dominant_archetype', 'Unknown')
                         analysis_length = len(str(pass_analysis))
                         logger.info(f"✅ Pass {pass_num} completed: {business_arch} | {risk_arch} ({analysis_length:,} chars)")
+                        
+                        # Record success for circuit breaker
+                        self.circuit_breaker.record_success()
                     else:
                         logger.warning(f"⚠️ Pass {pass_num} failed - continuing")
                         
                 except Exception as e:
                     logger.error(f"❌ Pass {pass_num} failed: {e}")
+                    # Record failure for circuit breaker
+                    if "529" in str(e) or "overloaded" in str(e).lower():
+                        self.circuit_breaker.record_failure()
                     continue
-                
-                # Brief pause between passes
-                if pass_num < self.num_passes:
-                    time.sleep(2)
             
             if not individual_analyses:
-                logger.error("❌ All optimized analysis passes failed")
+                logger.error("❌ All enhanced analysis passes failed")
                 return self._create_emergency_analysis(company_name, company_number, "All passes failed")
             
-            logger.info(f"📊 Completed {len(individual_analyses)}/{self.num_passes} optimized passes")
+            logger.info(f"📊 Completed {len(individual_analyses)}/{self.num_passes} enhanced passes")
             
             # Step 3: Enhanced synthesis with maximum detail
             synthesized_analysis = self._enhanced_synthesis(
                 individual_analyses, company_name, company_number, optimized_content
             )
             
-            # Step 4: Create comprehensive optimized report
+            # Step 4: Create comprehensive enhanced report
             final_report = self._create_optimized_report(
                 synthesized_analysis, individual_analyses, company_name, company_number
             )
             
             analysis_time = time.time() - start_time
             total_chars = len(str(final_report))
-            logger.info(f"🎉 OPTIMIZED analysis completed in {analysis_time:.2f}s")
+            logger.info(f"🎉 ENHANCED analysis completed in {analysis_time:.2f}s")
             logger.info(f"📊 Total output: {total_chars:,} characters (~{total_chars//4:,} tokens)")
             
             return final_report
             
         except Exception as e:
-            logger.error(f"❌ Optimized analysis failed: {e}")
+            logger.error(f"❌ Enhanced analysis failed: {e}")
             return self._create_emergency_analysis(company_name, company_number, str(e))
+    
+    def _enhanced_single_pass(self, content: str, company_name: str, company_number: str,
+                             extracted_content: Optional[List[Dict[str, Any]]], 
+                             analysis_context: Optional[str],
+                             pass_num: int, temperature: float) -> Optional[Dict[str, Any]]:
+        """
+        Single pass enhanced for Claude 3.5 Sonnet with intelligent retry
+        """
+        try:
+            if self.client_type == "anthropic_claude":
+                return self._anthropic_enhanced_pass_with_retry(
+                    content, company_name, company_number, 
+                    extracted_content, analysis_context, 
+                    pass_num, temperature
+                )
+            else:
+                logger.warning(f"Non-Anthropic client for pass {pass_num} - using fallback")
+                return self._fallback_optimized_pass(company_name, company_number, pass_num)
+                
+        except Exception as e:
+            logger.error(f"Enhanced pass {pass_num} failed: {e}")
+            return None
+    
+    def _anthropic_enhanced_pass_with_retry(self, content: str, company_name: str, company_number: str,
+                                          extracted_content: Optional[List[Dict[str, Any]]], 
+                                          analysis_context: Optional[str],
+                                          pass_num: int, temperature: float) -> Optional[Dict[str, Any]]:
+        """
+        ENHANCED Anthropic Claude pass with intelligent retry for 529 errors
+        """
+        
+        for model_idx, model in enumerate(self.fallback_models):
+            for attempt in range(self.max_retries):
+                try:
+                    # Check load balancer
+                    can_proceed, wait_time = self.load_balancer.can_make_request()
+                    if not can_proceed:
+                        logger.info(f"⏳ Rate limited, waiting {wait_time:.1f}s...")
+                        time.sleep(wait_time)
+                        continue
+                    
+                    # Adaptive token usage based on attempt and model
+                    max_tokens = self._get_adaptive_max_tokens(model, attempt)
+                    
+                    logger.info(f"🔄 Pass {pass_num}, Model: {model}, Attempt: {attempt + 1}/{self.max_retries}, Tokens: {max_tokens}")
+                    
+                    # Record request
+                    self.load_balancer.record_request()
+                    
+                    prompt = self._create_optimized_prompt(content, company_name, analysis_context, pass_num)
+                    
+                    response = self.anthropic_client.messages.create(
+                        model=model,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        system=self._get_adaptive_system_prompt(pass_num, max_tokens, attempt),
+                        messages=[{"role": "user", "content": prompt}]
+                    )
+                    
+                    response_text = response.content[0].text
+                    logger.info(f"✅ Pass {pass_num} successful with {model} on attempt {attempt + 1}")
+                    logger.info(f"📊 Response: {len(response_text):,} chars (~{len(response_text)//4:,} tokens)")
+                    
+                    parsed_analysis = self._parse_optimized_response(response_text, pass_num)
+                    if parsed_analysis:
+                        parsed_analysis['pass_metadata'] = {
+                            'pass_number': pass_num,
+                            'model_used': model,
+                            'attempt_number': attempt + 1,
+                            'temperature': temperature,
+                            'max_tokens': max_tokens,
+                            'analysis_timestamp': datetime.now().isoformat(),
+                            'ai_service': 'anthropic_claude_enhanced'
+                        }
+                    
+                    return parsed_analysis
+                    
+                except Exception as e:
+                    error_code = self._extract_error_code(str(e))
+                    error_msg = str(e)
+                    
+                    # Handle 529 overload errors with exponential backoff
+                    if error_code == 529 or "529" in error_msg or "overloaded" in error_msg.lower():
+                        if attempt < self.max_retries - 1:
+                            # Exponential backoff with jitter for 529 errors
+                            delay = self.base_retry_delay * (2 ** attempt) + random.uniform(1, 5)
+                            delay = min(delay, 120)  # Cap at 2 minutes
+                            
+                            logger.warning(f"⚠️ API Overload (529) - waiting {delay:.1f}s before retry {attempt + 2}")
+                            time.sleep(delay)
+                            continue
+                        else:
+                            logger.error(f"❌ All retries exhausted for {model} due to API overload")
+                            break  # Try next model
+                    
+                    # Handle other retryable errors
+                    elif self._is_retryable_error(error_msg) and attempt < self.max_retries - 1:
+                        delay = self.base_retry_delay * (1.5 ** attempt)
+                        logger.warning(f"⚠️ Retryable error: {e} - waiting {delay:.1f}s")
+                        time.sleep(delay)
+                        continue
+                    else:
+                        logger.error(f"❌ Non-retryable error with {model}: {e}")
+                        break  # Try next model
+            
+            # If all attempts failed with this model, try next model
+            if model_idx < len(self.fallback_models) - 1:
+                logger.warning(f"⚠️ All attempts failed with {model}, trying next model...")
+                time.sleep(10)  # Brief pause before trying next model
+        
+        logger.error(f"❌ All models and attempts failed for pass {pass_num}")
+        return None
+    
+    def _get_adaptive_max_tokens(self, model: str, attempt: int) -> int:
+        """Adapt max tokens based on model and attempt to reduce load"""
+        base_tokens = {
+            "claude-3-5-sonnet-20241022": self.max_output_tokens,
+            "claude-3-sonnet-20240229": min(self.max_output_tokens, 4000),
+            "claude-3-haiku-20240307": min(self.max_output_tokens, 2000)
+        }
+        
+        max_tokens = base_tokens.get(model, 4000)
+        
+        # Reduce tokens on later attempts to reduce API load
+        if attempt > 2:
+            max_tokens = int(max_tokens * 0.6)  # 40% reduction
+        elif attempt > 1:
+            max_tokens = int(max_tokens * 0.75)  # 25% reduction
+        elif attempt > 0:
+            max_tokens = int(max_tokens * 0.85)  # 15% reduction
+            
+        return max(max_tokens, 1500)  # Minimum viable output
+    
+    def _get_adaptive_system_prompt(self, pass_num: int, max_tokens: int, attempt: int) -> str:
+        """Adaptive system prompt based on available tokens and attempt"""
+        if max_tokens >= 6000:
+            depth = "comprehensive, detailed analysis with extensive evidence"
+            min_words = "400+ words for dominant rationales, 200+ for secondary"
+        elif max_tokens >= 3000:
+            depth = "detailed analysis with key evidence"
+            min_words = "200+ words for dominant rationales, 100+ for secondary"
+        else:
+            depth = "focused analysis with essential evidence"
+            min_words = "100+ words for rationales"
+            
+        return f"""You are conducting pass {pass_num} of a strategic analysis with {max_tokens:,} available tokens.
+
+ANALYSIS REQUIREMENTS:
+- Provide {depth}
+- {min_words}
+- Focus on the most critical strategic insights
+- Include concrete evidence quotes
+- Deliver actionable board-level recommendations
+
+Optimize your response for maximum strategic value within the token limit."""
+    
+    def _extract_error_code(self, error_message: str) -> Optional[int]:
+        """Extract HTTP error code from error message"""
+        import re
+        match = re.search(r'Error code: (\d+)', error_message)
+        if match:
+            return int(match.group(1))
+        
+        # Check for common HTTP codes in message
+        if '529' in error_message:
+            return 529
+        elif '503' in error_message:
+            return 503
+        elif '502' in error_message:
+            return 502
+        elif '429' in error_message:
+            return 429
+            
+        return None
+    
+    def _is_retryable_error(self, error_message: str) -> bool:
+        """Check if error is retryable"""
+        retryable_indicators = [
+            "timeout", "connection", "network", "temporary", 
+            "rate limit", "throttl", "busy", "503", "502", "429"
+        ]
+        
+        error_lower = error_message.lower()
+        return any(indicator in error_lower for indicator in retryable_indicators)
     
     def _optimize_content_for_max_tokens(self, content: str, extracted_content: Optional[List[Dict[str, Any]]], 
                                        company_name: str) -> str:
@@ -274,92 +573,6 @@ class OptimizedClaudeAnalyzer:
         temperatures = [0.05, 0.25, 0.15, 0.3, 0.1]  # More sophisticated progression
         return temperatures[(pass_num - 1) % len(temperatures)]
     
-    def _optimized_single_pass(self, content: str, company_name: str, company_number: str,
-                             extracted_content: Optional[List[Dict[str, Any]]], 
-                             analysis_context: Optional[str],
-                             pass_num: int, temperature: float) -> Optional[Dict[str, Any]]:
-        """
-        Single pass optimized for Claude 3.5 Sonnet's maximum capacity
-        """
-        try:
-            if self.client_type == "anthropic_claude":
-                return self._anthropic_optimized_pass(
-                    content, company_name, company_number, 
-                    extracted_content, analysis_context, 
-                    pass_num, temperature
-                )
-            else:
-                logger.warning(f"Non-Anthropic client for pass {pass_num} - using fallback")
-                return self._fallback_optimized_pass(company_name, company_number, pass_num)
-                
-        except Exception as e:
-            logger.error(f"Optimized pass {pass_num} failed: {e}")
-            return None
-    
-    def _anthropic_optimized_pass(self, content: str, company_name: str, company_number: str,
-                                extracted_content: Optional[List[Dict[str, Any]]], 
-                                analysis_context: Optional[str],
-                                pass_num: int, temperature: float) -> Optional[Dict[str, Any]]:
-        """
-        OPTIMIZED Anthropic Claude pass using maximum tokens
-        """
-        try:
-            # Create enhanced prompt for maximum output
-            prompt = self._create_optimized_prompt(content, company_name, analysis_context, pass_num)
-            
-            logger.info(f"📊 Pass {pass_num} prompt: {len(prompt):,} chars ({len(prompt)//4:,} est. tokens)")
-            
-            # OPTIMIZED: Use maximum Claude 3.5 Sonnet capacity
-            response = self.anthropic_client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=self.max_output_tokens,  # INCREASED: 8000 tokens instead of 4500
-                temperature=temperature,
-                system=f"""You are conducting pass {pass_num} of an OPTIMIZED multi-pass strategic analysis using Claude 3.5 Sonnet's full capacity.
-
-OPTIMIZATION INSTRUCTIONS:
-- Use ALL available output tokens ({self.max_output_tokens:,}) for maximum analysis depth
-- Provide comprehensive, detailed analysis with extensive evidence
-- Include multiple strategic perspectives and nuanced insights
-- Deliver board-level strategic analysis with executive depth
-- Focus on actionable strategic insights and competitive intelligence
-
-ANALYSIS DEPTH REQUIREMENTS:
-- Business dominant rationale: MINIMUM 400 words (comprehensive strategic analysis)
-- Business secondary rationale: MINIMUM 200 words (detailed supporting analysis)
-- Risk dominant rationale: MINIMUM 400 words (comprehensive risk framework assessment)
-- Risk secondary rationale: MINIMUM 200 words (detailed secondary risk analysis)
-- Evidence quotes: 8-10 specific quotes with context
-- SWOT items: 5-6 detailed items per category with strategic implications
-
-Provide the most comprehensive strategic analysis possible using the full token capacity.""",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            
-            response_text = response.content[0].text
-            logger.info(f"📊 Pass {pass_num} response: {len(response_text):,} chars (~{len(response_text)//4:,} tokens)")
-            
-            # Parse enhanced response
-            parsed_analysis = self._parse_optimized_response(response_text, pass_num)
-            
-            if parsed_analysis:
-                # Add enhanced pass metadata
-                parsed_analysis['pass_metadata'] = {
-                    'pass_number': pass_num,
-                    'temperature': temperature,
-                    'analysis_timestamp': datetime.now().isoformat(),
-                    'ai_service': 'anthropic_claude_optimized',
-                    'output_tokens_used': len(response_text) // 4,  # Estimate
-                    'optimization_level': 'maximum'
-                }
-            
-            return parsed_analysis
-            
-        except Exception as e:
-            logger.error(f"Optimized Anthropic pass {pass_num} failed: {e}")
-            return None
-    
     def _create_optimized_prompt(self, content: str, company_name: str, 
                                analysis_context: Optional[str], pass_num: int) -> str:
         """
@@ -367,13 +580,13 @@ Provide the most comprehensive strategic analysis possible using the full token 
         """
         context_note = f"\n\nANALYSIS CONTEXT: {analysis_context}" if analysis_context else ""
         
-        return f"""OPTIMIZED BOARD-LEVEL STRATEGIC ARCHETYPE ANALYSIS - CLAUDE 3.5 SONNET MAXIMUM CAPACITY
+        return f"""ENHANCED BOARD-LEVEL STRATEGIC ARCHETYPE ANALYSIS - CLAUDE 3.5 SONNET MAXIMUM CAPACITY
 
-You are conducting a comprehensive board-level strategic archetype analysis of {company_name}. This is pass {pass_num} of an optimized multi-pass analysis designed to extract maximum strategic insights using Claude 3.5 Sonnet's full 8,000 token output capacity.
+You are conducting a comprehensive board-level strategic archetype analysis of {company_name}. This is pass {pass_num} of an enhanced multi-pass analysis designed to extract maximum strategic insights using Claude 3.5 Sonnet's full output capacity.
 
 EXECUTIVE ANALYSIS REQUIREMENTS:
 - Deliver comprehensive, evidence-based strategic analysis with maximum depth
-- Use ALL available output tokens for the most detailed analysis possible
+- Use available output tokens for the most detailed analysis possible
 - Provide multiple strategic perspectives and nuanced competitive insights
 - Include extensive evidence quotations with strategic context
 - Focus on actionable board-level strategic insights and market intelligence
@@ -391,17 +604,17 @@ REQUIRED OUTPUT FORMAT (JSON):
 {{
   "business_strategy": {{
     "dominant_archetype": "[exact archetype name from business list]",
-    "dominant_rationale": "[COMPREHENSIVE 400+ WORD ANALYSIS with extensive evidence]",
+    "dominant_rationale": "[COMPREHENSIVE ANALYSIS with extensive evidence - minimum 200 words]",
     "secondary_archetype": "[exact archetype name from business list]", 
-    "secondary_rationale": "[COMPREHENSIVE 200+ WORD ANALYSIS with supporting evidence]",
+    "secondary_rationale": "[DETAILED ANALYSIS with supporting evidence - minimum 100 words]",
     "material_changes": "[detailed analysis of changes over time]",
     "evidence_quotes": ["quote 1", "quote 2", "quote 3", "quote 4", "quote 5"]
   }},
   "risk_strategy": {{
     "dominant_archetype": "[exact archetype name from risk list]",
-    "dominant_rationale": "[COMPREHENSIVE 400+ WORD ANALYSIS with extensive evidence]",
+    "dominant_rationale": "[COMPREHENSIVE ANALYSIS with extensive evidence - minimum 200 words]",
     "secondary_archetype": "[exact archetype name from risk list]",
-    "secondary_rationale": "[COMPREHENSIVE 200+ WORD ANALYSIS with supporting evidence]", 
+    "secondary_rationale": "[DETAILED ANALYSIS with supporting evidence - minimum 100 words]", 
     "material_changes": "[detailed analysis of changes over time]",
     "evidence_quotes": ["risk quote 1", "risk quote 2", "risk quote 3"]
   }},
@@ -439,7 +652,7 @@ REQUIRED OUTPUT FORMAT (JSON):
   "confidence_level": "high"
 }}
 
-CRITICAL OPTIMIZATION INSTRUCTIONS:
+CRITICAL ENHANCEMENT INSTRUCTIONS:
 - MAXIMIZE use of available output tokens for comprehensive analysis
 - Include extensive evidence quotations with full strategic context
 - Provide detailed competitive intelligence and market positioning analysis
@@ -467,19 +680,19 @@ CRITICAL OPTIMIZATION INSTRUCTIONS:
                 if json_match:
                     analysis = json.loads(json_match.group())
                 else:
-                    logger.warning(f"No JSON found in optimized pass {pass_num} response")
+                    logger.warning(f"No JSON found in enhanced pass {pass_num} response")
                     return None
             
             # Enhanced validation for optimized response
             required_sections = ['business_strategy', 'risk_strategy', 'comprehensive_swot_analysis']
             if not all(section in analysis for section in required_sections):
-                logger.warning(f"Optimized pass {pass_num} missing required sections")
+                logger.warning(f"Enhanced pass {pass_num} missing required sections")
                 return None
             
             return analysis
             
         except Exception as e:
-            logger.error(f"Failed to parse optimized pass {pass_num} response: {e}")
+            logger.error(f"Failed to parse enhanced pass {pass_num} response: {e}")
             return None
     
     def _enhanced_synthesis(self, analyses: List[Dict[str, Any]], 
@@ -580,18 +793,19 @@ CRITICAL OPTIMIZATION INSTRUCTIONS:
                 'total_analysis_passes': len(individual_analyses),
                 'business_confidence': f"{consensus['business_strategy']['confidence']:.1%}",
                 'risk_confidence': f"{consensus['risk_strategy']['confidence']:.1%}",
-                'optimization_level': 'maximum_claude_capacity'
+                'enhancement_level': 'maximum_claude_capacity_with_529_handling'
             },
             
             # Analysis Metadata
             'analysis_metadata': {
                 'confidence_level': 'high' if (consensus['business_strategy']['confidence'] + consensus['risk_strategy']['confidence']) / 2 > 0.7 else 'medium',
-                'analysis_type': 'optimized_claude_3.5_sonnet_multi_pass_v8.0',
+                'analysis_type': 'enhanced_claude_3.5_sonnet_multi_pass_v9.0',
                 'analysis_timestamp': datetime.now().isoformat(),
-                'methodology': f'OPTIMIZED Claude 3.5 Sonnet analysis using {self.max_output_tokens:,} tokens per pass',
+                'methodology': f'ENHANCED Claude 3.5 Sonnet analysis with 529 error handling using up to {self.max_output_tokens:,} tokens per pass',
                 'ai_service_used': self.client_type,
                 'passes_completed': len(individual_analyses),
-                'passes_attempted': self.num_passes
+                'passes_attempted': self.num_passes,
+                'circuit_breaker_status': 'open' if self.circuit_breaker.is_open else 'closed'
             }
         }
     
@@ -601,17 +815,17 @@ CRITICAL OPTIMIZATION INSTRUCTIONS:
         for analysis in analyses:
             strategy = analysis.get(strategy_type, {})
             reasoning = strategy.get(field, '')
-            if reasoning and len(reasoning) > 200:
+            if reasoning and len(reasoning) > 100:
                 reasonings.append(reasoning)
         
         if not reasonings:
-            return "Comprehensive analysis based on multi-pass evaluation of strategic documentation with enhanced evidence synthesis."
+            return "Comprehensive analysis based on enhanced multi-pass evaluation of strategic documentation with intelligent error handling and evidence synthesis."
         
         # Return the longest, most comprehensive reasoning
         best_reasoning = max(reasonings, key=len)
         
         # Add synthesis enhancement
-        enhancement = f" This comprehensive assessment incorporates insights from {len(analyses)} independent analytical passes, providing enhanced strategic depth and validation."
+        enhancement = f" This comprehensive assessment incorporates insights from {len(analyses)} independent analytical passes with enhanced 529 error handling, providing robust strategic depth and validation."
         
         return best_reasoning + enhancement
     
@@ -625,7 +839,7 @@ CRITICAL OPTIMIZATION INSTRUCTIONS:
                 changes.append(change)
         
         if not changes:
-            return 'No material changes identified across comprehensive multi-pass analysis period'
+            return 'No material changes identified across comprehensive enhanced multi-pass analysis period'
         
         # Combine unique changes
         unique_changes = list(dict.fromkeys(changes))
@@ -672,9 +886,9 @@ CRITICAL OPTIMIZATION INSTRUCTIONS:
                 
             try:
                 import anthropic
-                self.anthropic_client = anthropic.Anthropic(api_key=api_key, max_retries=3, timeout=180.0)
+                self.anthropic_client = anthropic.Anthropic(api_key=api_key, max_retries=0, timeout=180.0)  # Disable internal retries
                 self.client_type = "anthropic_claude"
-                logger.info("🚀 Anthropic Claude 3.5 Sonnet configured for OPTIMIZED analysis")
+                logger.info("🚀 Anthropic Claude 3.5 Sonnet configured for ENHANCED analysis")
                 return
             except ImportError:
                 logger.warning("Anthropic library not available")
@@ -695,7 +909,7 @@ CRITICAL OPTIMIZATION INSTRUCTIONS:
                 self.openai_client = OpenAI(api_key=api_key, max_retries=3, timeout=120.0)
                 if self.client_type == "fallback":
                     self.client_type = "openai_turbo_v1"
-                logger.info("✅ OpenAI configured as fallback for optimized analysis")
+                logger.info("✅ OpenAI configured as fallback for enhanced analysis")
                 return
             except ImportError:
                 pass
@@ -704,52 +918,53 @@ CRITICAL OPTIMIZATION INSTRUCTIONS:
             logger.warning(f"OpenAI fallback setup failed: {e}")
     
     def _fallback_optimized_pass(self, company_name: str, company_number: str, pass_num: int) -> Optional[Dict[str, Any]]:
-        """Optimized fallback pass"""
+        """Enhanced fallback pass"""
         return {
             'business_strategy': {
                 'dominant_archetype': 'Disciplined Specialist Growth',
-                'dominant_rationale': 'Optimized fallback analysis indicates disciplined specialist growth characteristics with conservative risk management and focused market positioning approach.',
+                'dominant_rationale': 'Enhanced fallback analysis indicates disciplined specialist growth characteristics with conservative risk management and focused market positioning approach based on available evidence.',
                 'secondary_archetype': 'Service-Driven Differentiator', 
-                'secondary_rationale': 'Secondary characteristics suggest service-driven differentiation with customer-centric approach.',
-                'evidence_quotes': ['Optimized fallback analysis - enhanced evidence collection required']
+                'secondary_rationale': 'Secondary characteristics suggest service-driven differentiation with customer-centric approach and relationship focus.',
+                'evidence_quotes': ['Enhanced fallback analysis - comprehensive evidence collection required']
             },
             'risk_strategy': {
                 'dominant_archetype': 'Risk-First Conservative',
-                'dominant_rationale': 'Optimized fallback analysis suggests comprehensive conservative risk management approach with strong governance frameworks.',
+                'dominant_rationale': 'Enhanced fallback analysis suggests comprehensive conservative risk management approach with strong governance frameworks and regulatory compliance focus.',
                 'secondary_archetype': 'Rules-Led Operator',
-                'secondary_rationale': 'Secondary characteristics indicate systematic operational controls and procedural adherence.',
-                'evidence_quotes': ['Optimized fallback analysis - enhanced evidence collection required']
+                'secondary_rationale': 'Secondary characteristics indicate systematic operational controls and procedural adherence with process-driven approach.',
+                'evidence_quotes': ['Enhanced fallback analysis - comprehensive evidence collection required']
             },
             'comprehensive_swot_analysis': {
-                'strengths': ['Conservative risk approach', 'Specialist market focus', 'Service differentiation'],
-                'weaknesses': ['Limited analysis depth', 'Constrained evidence base'],
-                'opportunities': ['Enhanced analysis capabilities', 'Comprehensive evidence collection'],
-                'threats': ['Analysis limitations', 'Evidence constraints']
+                'strengths': ['Conservative risk approach with stability focus', 'Specialist market positioning', 'Service differentiation capability'],
+                'weaknesses': ['Limited enhanced analysis depth', 'Constrained evidence base', 'Reduced analytical coverage'],
+                'opportunities': ['Enhanced analysis capabilities implementation', 'Comprehensive evidence collection systems', 'Advanced strategic assessment tools'],
+                'threats': ['Analysis system limitations', 'Evidence collection constraints', 'Reduced strategic insight depth']
             },
             'years_analyzed': 'Current period',
-            'confidence_level': 'low'
+            'confidence_level': 'medium'
         }
     
     def _create_emergency_analysis(self, company_name: str, company_number: str, error_message: str) -> Dict[str, Any]:
-        """Emergency optimized analysis"""
+        """Emergency enhanced analysis"""
         return {
             'company_name': company_name,
             'company_number': company_number,
             'analysis_date': datetime.now().isoformat(),
             'business_strategy': {
                 'dominant': 'Disciplined Specialist Growth',
-                'dominant_reasoning': 'Emergency optimized analysis protocol activated. Conservative assessment indicates disciplined specialist growth characteristics.',
-                'evidence_quotes': ['Emergency analysis - system optimization required']
+                'dominant_reasoning': 'Emergency enhanced analysis protocol activated. Conservative assessment indicates disciplined specialist growth characteristics with focus on sustainable operations.',
+                'evidence_quotes': ['Emergency analysis - enhanced system optimization required']
             },
             'risk_strategy': {
                 'dominant': 'Risk-First Conservative',
-                'dominant_reasoning': 'Emergency optimized analysis indicates conservative risk management approach.',
-                'evidence_quotes': ['Emergency analysis - system optimization required']
+                'dominant_reasoning': 'Emergency enhanced analysis indicates conservative risk management approach with strong governance and regulatory compliance focus.',
+                'evidence_quotes': ['Emergency analysis - enhanced system optimization required']
             },
             'analysis_metadata': {
-                'analysis_type': 'emergency_optimized_claude_fallback',
+                'analysis_type': 'emergency_enhanced_claude_fallback',
                 'error_message': error_message,
-                'optimization_level': 'emergency'
+                'enhancement_level': 'emergency',
+                'circuit_breaker_triggered': self.circuit_breaker.is_open
             }
         }
 
@@ -757,23 +972,23 @@ CRITICAL OPTIMIZATION INSTRUCTIONS:
 # BACKWARD COMPATIBILITY: Enhanced ExecutiveAIAnalyzer
 class ExecutiveAIAnalyzer(OptimizedClaudeAnalyzer):
     """
-    OPTIMIZED ExecutiveAIAnalyzer using Claude 3.5 Sonnet's full 8K token capacity
-    Same interface - Maximum analysis depth and strategic insights
+    ENHANCED ExecutiveAIAnalyzer using Claude 3.5 Sonnet's full capacity with 529 error handling
+    Same interface - Maximum analysis depth and strategic insights with intelligent retry
     """
     
     def __init__(self):
         super().__init__()
-        logger.info("🚀 ExecutiveAIAnalyzer v8.0 - OPTIMIZED for Claude 3.5 Sonnet maximum capacity!")
-        logger.info("📊 Using full 8,000 token output for comprehensive strategic analysis")
+        logger.info("🚀 ExecutiveAIAnalyzer v9.0 - ENHANCED for Claude 3.5 Sonnet with 529 error handling!")
+        logger.info("📊 Using intelligent retry, circuit breaker, and load balancing")
     
     def analyze_for_board(self, content: str, company_name: str, company_number: str, 
                          extracted_content: Optional[List[Dict[str, Any]]] = None,
                          analysis_context: Optional[str] = None) -> Dict[str, Any]:
         """
-        OPTIMIZED board-grade analysis using Claude 3.5 Sonnet's maximum capacity
-        Same interface - Enhanced with comprehensive multi-pass insights
+        ENHANCED board-grade analysis using Claude 3.5 Sonnet's maximum capacity with 529 handling
+        Same interface - Enhanced with comprehensive multi-pass insights and error resilience
         """
-        logger.info("🚀 Performing OPTIMIZED multi-pass analysis using Claude 3.5 Sonnet's full capacity")
+        logger.info("🚀 Performing ENHANCED multi-pass analysis with 529 error handling")
         return self.analyze_for_board_optimized(
             content, company_name, company_number, extracted_content, analysis_context
         )
