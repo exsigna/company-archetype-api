@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Enhanced AI Archetype Analyzer for Board-Level Strategic Analysis - GPT-4 TURBO EDITION
+Enhanced AI Archetype Analyzer for Board-Level Strategic Analysis - ANTHROPIC CLAUDE PRIMARY EDITION
 Delivers structured report format with dominant/secondary archetypes and detailed rationale
-TURBO: Maximum quality analysis with 128k context window and enhanced reasoning
+PRIMARY: Anthropic Claude API with OpenAI GPT-4 Turbo fallback
 """
 
 import os
@@ -18,18 +18,20 @@ logger = logging.getLogger(__name__)
 class ExecutiveAIAnalyzer:
     """
     Executive-grade AI analyzer delivering structured archetype reports
-    GPT-4 TURBO EDITION: Maximum quality with enhanced reasoning capabilities
+    ANTHROPIC CLAUDE PRIMARY: Maximum quality with Claude Sonnet as primary, GPT-4 Turbo as fallback
     """
     
     def __init__(self):
-        """Initialize with enterprise-grade GPT-4 Turbo configuration"""
+        """Initialize with Anthropic Claude as primary, OpenAI GPT-4 Turbo as fallback"""
         self.client_type = "fallback"
+        self.anthropic_client = None
         self.openai_client = None
         
-        logger.info("🚀 Executive AI Analyzer v5.0 - GPT-4 TURBO EDITION")
+        logger.info("🚀 Executive AI Analyzer v5.0 - ANTHROPIC CLAUDE PRIMARY EDITION")
         
-        # Initialize AI providers
-        self._init_openai_turbo()
+        # Initialize AI providers (Anthropic first, then OpenAI fallback)
+        self._init_anthropic_primary()
+        self._init_openai_fallback()
         
         # Enhanced archetype definitions for structured analysis
         self.business_archetypes = {
@@ -188,14 +190,41 @@ class ExecutiveAIAnalyzer:
             }
         }
         
-        logger.info(f"✅ Executive AI Analyzer v5.0 TURBO initialized. Analysis engine: {self.client_type}")
+        logger.info(f"✅ Executive AI Analyzer v5.0 ANTHROPIC PRIMARY initialized. Analysis engine: {self.client_type}")
     
-    def _init_openai_turbo(self):
-        """Initialize OpenAI GPT-4 Turbo with enhanced error handling"""
+    def _init_anthropic_primary(self):
+        """Initialize Anthropic Claude as primary AI service"""
+        try:
+            api_key = os.environ.get('ANTHROPIC_API_KEY')
+            if not api_key:
+                logger.warning("⚠️ Anthropic API key not found - will try OpenAI fallback")
+                return
+                
+            # Try to import and initialize Anthropic client
+            try:
+                import anthropic
+                self.anthropic_client = anthropic.Anthropic(
+                    api_key=api_key,
+                    max_retries=3,
+                    timeout=120.0  # Longer timeout for complex analysis
+                )
+                self.client_type = "anthropic_claude"
+                logger.info("🚀 Anthropic Claude configured as primary AI service for maximum quality analysis")
+                return
+            except ImportError:
+                logger.warning("Anthropic library not available, falling back to OpenAI")
+                return
+                    
+        except Exception as e:
+            logger.warning(f"Anthropic setup failed: {e}")
+            logger.info("Will attempt OpenAI fallback")
+    
+    def _init_openai_fallback(self):
+        """Initialize OpenAI GPT-4 Turbo as fallback service"""
         try:
             api_key = os.environ.get('OPENAI_API_KEY')
             if not api_key:
-                logger.warning("⚠️ OpenAI API key not found - using enhanced fallback analysis")
+                logger.warning("⚠️ OpenAI API key not found - enhanced fallback analysis will be used")
                 return
                 
             # Try modern OpenAI v1.x API first
@@ -206,11 +235,12 @@ class ExecutiveAIAnalyzer:
                     max_retries=3,
                     timeout=120.0  # Longer timeout for complex analysis
                 )
-                self.client_type = "openai_turbo_v1"
-                logger.info("🚀 OpenAI v1.x GPT-4 Turbo configured for maximum quality analysis")
+                if self.client_type == "fallback":  # Only set if no primary service available
+                    self.client_type = "openai_turbo_v1"
+                logger.info("✅ OpenAI v1.x GPT-4 Turbo configured as fallback service")
                 return
             except ImportError:
-                logger.info("OpenAI v1.x not available, falling back to v0.28.x")
+                logger.info("OpenAI v1.x not available, trying v0.28.x")
             
             # Fallback to v0.28.x
             import openai
@@ -218,18 +248,19 @@ class ExecutiveAIAnalyzer:
             
             openai.api_key = api_key
             self.openai_client = openai
-            self.client_type = "openai_turbo_legacy"
-            logger.info("✅ OpenAI v0.28.x configured for GPT-4 Turbo analysis")
+            if self.client_type == "fallback":  # Only set if no primary service available
+                self.client_type = "openai_turbo_legacy"
+            logger.info("✅ OpenAI v0.28.x configured as fallback service")
                     
         except Exception as e:
-            logger.warning(f"OpenAI setup failed: {e}")
-            logger.info("Enhanced fallback analysis will be used")
+            logger.warning(f"OpenAI fallback setup failed: {e}")
+            logger.info("Enhanced local fallback analysis will be used")
     
     def analyze_for_board(self, content: str, company_name: str, company_number: str, 
                          extracted_content: Optional[List[Dict[str, Any]]] = None,
                          analysis_context: Optional[str] = None) -> Dict[str, Any]:
         """
-        Executive-grade archetype analysis with GPT-4 Turbo
+        Executive-grade archetype analysis with Anthropic Claude primary and OpenAI fallback
         
         Returns structured analysis with:
         1. Dominant archetype + rationale (120+ words)
@@ -240,10 +271,12 @@ class ExecutiveAIAnalyzer:
         start_time = time.time()
         
         try:
-            logger.info(f"🚀 Starting GPT-4 Turbo analysis for {company_name}")
+            logger.info(f"🚀 Starting AI analysis for {company_name} with primary: {self.client_type}")
             
-            if self.client_type.startswith("openai_turbo"):
-                analysis = self._turbo_ai_analysis(content, company_name, company_number, extracted_content, analysis_context)
+            if self.client_type == "anthropic_claude":
+                analysis = self._anthropic_ai_analysis(content, company_name, company_number, extracted_content, analysis_context)
+            elif self.client_type.startswith("openai_turbo"):
+                analysis = self._openai_ai_analysis(content, company_name, company_number, extracted_content, analysis_context)
             else:
                 analysis = self._executive_fallback_analysis(content, company_name, company_number, extracted_content, analysis_context)
             
@@ -251,20 +284,31 @@ class ExecutiveAIAnalyzer:
             structured_analysis = self._create_structured_report(analysis, company_name, company_number)
             
             analysis_time = time.time() - start_time
-            logger.info(f"✅ GPT-4 Turbo analysis completed in {analysis_time:.2f}s")
+            logger.info(f"✅ AI analysis completed in {analysis_time:.2f}s using {self.client_type}")
             
             return structured_analysis
             
         except Exception as e:
-            logger.error(f"Turbo analysis failed: {e}")
+            logger.error(f"Primary AI analysis failed: {e}")
+            # Try fallback if primary failed
+            if self.client_type == "anthropic_claude" and self.openai_client:
+                logger.info("🔄 Attempting OpenAI fallback analysis...")
+                try:
+                    analysis = self._openai_ai_analysis(content, company_name, company_number, extracted_content, analysis_context)
+                    structured_analysis = self._create_structured_report(analysis, company_name, company_number)
+                    analysis_time = time.time() - start_time
+                    logger.info(f"✅ Fallback analysis completed in {analysis_time:.2f}s")
+                    return structured_analysis
+                except Exception as fallback_error:
+                    logger.error(f"Fallback analysis also failed: {fallback_error}")
+            
             return self._create_emergency_structured_analysis(company_name, company_number, str(e))
     
-    def _create_turbo_prompt(self, content: str, company_name: str, analysis_context: Optional[str]) -> str:
-        """Create enhanced prompt optimized for GPT-4 Turbo maximum quality analysis"""
+    def _create_anthropic_prompt(self, content: str, company_name: str, analysis_context: Optional[str]) -> str:
+        """Create enhanced prompt optimized for Anthropic Claude maximum quality analysis"""
         context_note = f"\n\nANALYSIS CONTEXT: {analysis_context}" if analysis_context else ""
         
-        return f"""
-You are conducting a board-level strategic archetype analysis of {company_name}. This analysis will inform executive decision-making and strategic planning at the highest corporate level.
+        return f"""You are conducting a board-level strategic archetype analysis of {company_name}. This analysis will inform executive decision-making and strategic planning at the highest corporate level.
 
 ANALYSIS REQUIREMENTS:
 - Use evidence-based reasoning with specific citations from documents
@@ -348,8 +392,7 @@ CRITICAL INSTRUCTIONS:
 - Provide specific evidence and direct quotes from the company documents
 - Ensure all rationales are complete thoughts without mid-sentence truncation
 - Focus on strategic implications that matter to board-level executives
-- Include specific financial metrics, market positioning, and competitive context where available in documents
-"""
+- Include specific financial metrics, market positioning, and competitive context where available in documents"""
     
     def _format_archetypes_for_prompt(self, archetypes: Dict[str, Dict[str, Any]]) -> str:
         """Format archetype definitions for prompt"""
@@ -358,16 +401,16 @@ CRITICAL INSTRUCTIONS:
             formatted += f"\n- {name}: {details['definition']}\n  Strategic Context: {details['strategic_context']}\n"
         return formatted
     
-    def _prepare_turbo_content(self, content: str, company_name: str) -> str:
-        """Prepare content optimized for GPT-4 Turbo 128k context window"""
+    def _prepare_content_for_ai(self, content: str, company_name: str) -> str:
+        """Prepare content optimized for AI analysis (both Anthropic and OpenAI)"""
         if not content:
             return f"Limited content available for {company_name} analysis."
         
         # Extract strategic sections with enhanced quality filtering
         strategic_content = self._extract_strategic_content_enhanced(content)
         
-        # GPT-4 Turbo can handle much larger content - optimize for quality
-        if len(strategic_content) > 100000:  # Much higher limit for Turbo
+        # Both Claude and GPT-4 Turbo can handle large content - optimize for quality
+        if len(strategic_content) > 100000:  # Much higher limit for modern AI
             # Prioritize most strategic content but keep more detail
             return self._prioritize_strategic_sections(strategic_content)[:100000]
         
@@ -429,19 +472,19 @@ CRITICAL INSTRUCTIONS:
         scored_sections.sort(key=lambda x: x[0], reverse=True)
         return '\n\n'.join([section[1] for section in scored_sections])
     
-    def _turbo_ai_analysis(self, content: str, company_name: str, company_number: str,
-                          extracted_content: Optional[List[Dict[str, Any]]], 
-                          analysis_context: Optional[str]) -> Dict[str, Any]:
-        """GPT-4 Turbo powered analysis with maximum quality settings"""
+    def _anthropic_ai_analysis(self, content: str, company_name: str, company_number: str,
+                              extracted_content: Optional[List[Dict[str, Any]]], 
+                              analysis_context: Optional[str]) -> Dict[str, Any]:
+        """Anthropic Claude powered analysis with maximum quality settings"""
         try:
-            # Prepare content for Turbo analysis
-            analysis_content = self._prepare_turbo_content(content, company_name)
+            # Prepare content for Claude analysis
+            analysis_content = self._prepare_content_for_ai(content, company_name)
             
-            # Create enhanced Turbo prompt
-            prompt = self._create_turbo_prompt(analysis_content, company_name, analysis_context)
+            # Create enhanced Claude prompt
+            prompt = self._create_anthropic_prompt(analysis_content, company_name, analysis_context)
             
-            # Execute Turbo AI analysis
-            response = self._execute_turbo_analysis(prompt)
+            # Execute Claude AI analysis
+            response = self._execute_anthropic_analysis(prompt)
             
             # Parse response into structured format
             parsed_analysis = self._parse_structured_response(response, extracted_content)
@@ -449,17 +492,76 @@ CRITICAL INSTRUCTIONS:
             return parsed_analysis
             
         except Exception as e:
-            logger.error(f"Turbo AI analysis failed: {e}")
-            return self._executive_fallback_analysis(content, company_name, company_number, extracted_content, analysis_context)
+            logger.error(f"Anthropic AI analysis failed: {e}")
+            # Try OpenAI fallback if available
+            if self.openai_client:
+                logger.info("🔄 Attempting OpenAI fallback after Anthropic failure...")
+                return self._openai_ai_analysis(content, company_name, company_number, extracted_content, analysis_context)
+            else:
+                return self._executive_fallback_analysis(content, company_name, company_number, extracted_content, analysis_context)
     
-    def _execute_turbo_analysis(self, prompt: str, max_retries: int = 3) -> str:
-        """Execute GPT-4 Turbo analysis with maximum quality settings"""
+    def _execute_anthropic_analysis(self, prompt: str, max_retries: int = 3) -> str:
+        """Execute Anthropic Claude analysis with maximum quality settings"""
         for attempt in range(max_retries):
             try:
-                if self.client_type == "openai_turbo_v1":
-                    # Modern OpenAI v1.x API
+                response = self.anthropic_client.messages.create(
+                    model="claude-3-5-sonnet-20241022",  # Latest Claude 3.5 Sonnet
+                    max_tokens=4500,       # High for detailed responses
+                    temperature=0.1,       # Low for consistency and reliability
+                    system="""You are an expert strategic consultant and business analyst with 20+ years of experience in financial services archetype classification and board-level strategic advisory.
+
+Your expertise includes:
+- Strategic business model analysis and competitive positioning
+- Risk management framework assessment and governance evaluation
+- Corporate strategy development and implementation
+- Board-level advisory and executive decision support
+- Financial services industry expertise and regulatory knowledge
+
+Provide thorough, evidence-based analysis with specific citations from provided documents. Focus on strategic insights that would be valuable to board-level executives and support critical business decisions. Ensure all analysis is complete and actionable.""",
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+                return response.content[0].text
+                
+            except Exception as e:
+                logger.warning(f"Anthropic analysis attempt {attempt + 1} failed: {e}")
+                if attempt == max_retries - 1:
+                    raise e
+                time.sleep(2)  # Wait between retries
+        
+        raise Exception("Anthropic analysis failed after all retries")
+    
+    def _openai_ai_analysis(self, content: str, company_name: str, company_number: str,
+                           extracted_content: Optional[List[Dict[str, Any]]], 
+                           analysis_context: Optional[str]) -> Dict[str, Any]:
+        """OpenAI GPT-4 Turbo powered analysis as fallback"""
+        try:
+            # Prepare content for OpenAI analysis
+            analysis_content = self._prepare_content_for_ai(content, company_name)
+            
+            # Create enhanced OpenAI prompt (reuse Anthropic prompt format)
+            prompt = self._create_anthropic_prompt(analysis_content, company_name, analysis_context)
+            
+            # Execute OpenAI AI analysis
+            response = self._execute_openai_analysis(prompt)
+            
+            # Parse response into structured format
+            parsed_analysis = self._parse_structured_response(response, extracted_content)
+            
+            return parsed_analysis
+            
+        except Exception as e:
+            logger.error(f"OpenAI fallback analysis failed: {e}")
+            return self._executive_fallback_analysis(content, company_name, company_number, extracted_content, analysis_context)
+    
+    def _execute_openai_analysis(self, prompt: str, max_retries: int = 3) -> str:
+        """Execute OpenAI GPT-4 Turbo analysis with maximum quality settings"""
+        for attempt in range(max_retries):
+            try:
+                if hasattr(self.openai_client, 'chat'):  # v1.x API
                     response = self.openai_client.chat.completions.create(
-                        model="gpt-4-turbo",  # 🚀 TURBO MODEL
+                        model="gpt-4-turbo",  # GPT-4 Turbo model
                         messages=[
                             {
                                 "role": "system", 
@@ -483,10 +585,9 @@ CRITICAL INSTRUCTIONS:
                         presence_penalty=0.1   # Encourage diverse vocabulary
                     )
                     return response.choices[0].message.content
-                else:
-                    # Legacy v0.28.x API
+                else:  # v0.28.x API
                     response = self.openai_client.ChatCompletion.create(
-                        model="gpt-4-turbo",  # 🚀 TURBO MODEL
+                        model="gpt-4-turbo",
                         messages=[
                             {
                                 "role": "system", 
@@ -495,23 +596,23 @@ CRITICAL INSTRUCTIONS:
                             {"role": "user", "content": prompt}
                         ],
                         temperature=0.1,
-                        max_tokens=4500,  # Increased for quality
+                        max_tokens=4500,
                         top_p=0.85
                     )
                     return response.choices[0].message.content
                 
             except Exception as e:
-                logger.warning(f"Turbo analysis attempt {attempt + 1} failed: {e}")
+                logger.warning(f"OpenAI analysis attempt {attempt + 1} failed: {e}")
                 if attempt == max_retries - 1:
                     raise e
-                time.sleep(2)  # Longer wait between retries
+                time.sleep(2)  # Wait between retries
         
-        raise Exception("Turbo analysis failed after all retries")
+        raise Exception("OpenAI analysis failed after all retries")
     
     def _parse_structured_response(self, response: str, extracted_content: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
         """
         Parse structured AI response into analysis format
-        Enhanced for Turbo quality analysis
+        Enhanced for both Anthropic and OpenAI quality analysis
         """
         try:
             # Try to parse as JSON first
@@ -536,10 +637,10 @@ CRITICAL INSTRUCTIONS:
             return analysis
             
         except (json.JSONDecodeError, ValueError) as e:
-            logger.warning(f"Failed to parse Turbo response as JSON: {e}")
+            logger.warning(f"Failed to parse AI response as JSON: {e}")
             return self._create_fallback_from_partial_response(response, extracted_content)
         except Exception as e:
-            logger.error(f"Unexpected error parsing Turbo response: {e}")
+            logger.error(f"Unexpected error parsing AI response: {e}")
             return self._create_fallback_from_partial_response(response, extracted_content)
 
     def _validate_structured_analysis(self, analysis: Dict[str, Any]) -> bool:
@@ -566,7 +667,7 @@ CRITICAL INSTRUCTIONS:
     def _validate_and_ensure_minimum_word_counts(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
         """Ensure rationales meet minimum word count requirements WITHOUT TRUNCATION"""
         
-        # Enhanced validation for Turbo quality
+        # Enhanced validation for AI quality
         business = analysis.get('business_strategy', {})
         if 'dominant_rationale' in business:
             business['dominant_rationale'] = self._ensure_minimum_word_count(business['dominant_rationale'], 120)
@@ -604,7 +705,7 @@ CRITICAL INSTRUCTIONS:
 
     def _create_fallback_from_partial_response(self, response: str, extracted_content: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
         """Create fallback analysis from partial AI response"""
-        logger.info("Creating enhanced fallback analysis from partial Turbo response")
+        logger.info("Creating enhanced fallback analysis from partial AI response")
         
         # Try to extract any useful information from the response
         content_analysis = {'confidence_level': 'medium'}
@@ -625,10 +726,10 @@ CRITICAL INSTRUCTIONS:
             definition = archetype_data['definition']
         
         if minimum_word_count >= 120:
-            # 120+ word comprehensive rationale for Turbo quality
+            # 120+ word comprehensive rationale for AI quality
             rationale = f"The organization demonstrates clear {archetype} characteristics through its documented strategic positioning and operational approach. {definition} Evidence from company documentation reveals strong alignment with this archetype's core principles including {context.lower()}. The strategic framework encompasses comprehensive market positioning, competitive differentiation strategies, and operational excellence initiatives consistent with this classification. Analysis of business model evolution, customer approach methodologies, and growth strategy implementation supports this primary archetype designation. Financial performance indicators and strategic communications consistently reinforce the alignment with {archetype} positioning in the competitive landscape. This comprehensive assessment confirms the dominant archetype classification based on multiple strategic and operational indicators throughout the analysis period, providing a strong foundation for strategic planning and competitive positioning. The classification is further supported by documented evidence of strategic decision-making patterns and operational priorities that align with this archetype's defining characteristics."
         else:  # 80+ words
-            # 80+ word secondary rationale for Turbo quality
+            # 80+ word secondary rationale for AI quality
             rationale = f"Secondary {archetype} influences complement the primary strategic positioning through {context.lower()}. This archetype provides additional framework context evident in operational approach and strategic communications throughout the analyzed period. Supporting documentation indicates meaningful alignment with {archetype} characteristics including specific elements of the definition and strategic context. The secondary classification enhances understanding of the organization's comprehensive strategic approach and provides valuable context for strategic planning and competitive positioning analysis throughout the assessment period. This secondary influence is demonstrated through specific operational decisions and strategic initiatives that reflect this archetype's principles."
         
         # Ensure minimum word count WITHOUT TRUNCATION
@@ -637,9 +738,9 @@ CRITICAL INSTRUCTIONS:
     def _executive_fallback_analysis(self, content: str, company_name: str, company_number: str,
                                    extracted_content: Optional[List[Dict[str, Any]]],
                                    analysis_context: Optional[str]) -> Dict[str, Any]:
-        """Enhanced fallback structured analysis with Turbo-quality standards"""
+        """Enhanced fallback structured analysis with AI-quality standards"""
         
-        logger.info("Using enhanced structured fallback analysis with Turbo quality standards")
+        logger.info("Using enhanced structured fallback analysis with AI quality standards")
         
         # Analyze content patterns
         content_analysis = self._analyze_content_for_archetypes(content)
@@ -650,7 +751,7 @@ CRITICAL INSTRUCTIONS:
         risk_dominant = self._determine_risk_archetype_from_content(content_analysis)
         risk_secondary = self._get_complementary_archetype(risk_dominant, self.risk_archetypes)
         
-        # Create structured analysis with Turbo quality standards
+        # Create structured analysis with AI quality standards
         return {
             'business_strategy': {
                 'dominant': business_dominant,
@@ -674,7 +775,7 @@ CRITICAL INSTRUCTIONS:
                 'confidence_level': content_analysis.get('confidence_level', 'medium'),
                 'files_analyzed': len(extracted_content) if extracted_content else 1,
                 'analysis_timestamp': datetime.now().isoformat(),
-                'analysis_type': 'turbo_enhanced_fallback_with_quality_standards'
+                'analysis_type': 'anthropic_enhanced_fallback_with_quality_standards'
             }
         }
     
@@ -862,7 +963,7 @@ CRITICAL INSTRUCTIONS:
     
     def _create_structured_report(self, analysis: Dict[str, Any], company_name: str, company_number: str) -> Dict[str, Any]:
         """
-        Transform analysis into final structured report format with Turbo quality standards
+        Transform analysis into final structured report format with AI quality standards
         """
         
         # Extract structured components
@@ -897,13 +998,13 @@ CRITICAL INSTRUCTIONS:
             risk_secondary = self._get_complementary_archetype(risk_dominant, self.risk_archetypes)
         
         # Log final archetype assignments
-        logger.info(f"🚀 Final GPT-4 Turbo archetype assignments for {company_name}:")
+        logger.info(f"🚀 Final AI archetype assignments for {company_name} (using {self.client_type}):")
         logger.info(f"   Business Dominant: {business_dominant}")
         logger.info(f"   Business Secondary: {business_secondary}")
         logger.info(f"   Risk Dominant: {risk_dominant}")
         logger.info(f"   Risk Secondary: {risk_secondary}")
         
-        # Create final structured report with Turbo quality
+        # Create final structured report with AI quality
         return {
             'company_name': company_name,
             'company_number': company_number,
@@ -934,18 +1035,19 @@ CRITICAL INSTRUCTIONS:
             # SWOT Analysis section
             'swot_analysis': swot_analysis,
             
-            # Analysis metadata with Turbo quality indicators
+            # Analysis metadata with AI quality indicators
             'analysis_metadata': {
                 'confidence_level': metadata.get('confidence_level', 'high'),
-                'analysis_type': 'gpt4_turbo_structured_archetype_report_v5.0',
+                'analysis_type': f'{self.client_type}_structured_archetype_report_v5.0',
                 'analysis_timestamp': metadata.get('analysis_timestamp', datetime.now().isoformat()),
-                'methodology': 'GPT-4 Turbo enhanced archetype classification with 128k context window and maximum quality settings'
+                'methodology': f'Primary: {self.client_type}, enhanced archetype classification with maximum quality settings',
+                'ai_service_used': self.client_type
             }
         }
     
     def _extract_archetype_from_reasoning(self, reasoning_text: str, archetype_dict: Dict[str, Dict[str, Any]], default: str) -> str:
         """
-        Enhanced archetype extraction from reasoning text with Turbo intelligence
+        Enhanced archetype extraction from reasoning text with AI intelligence
         """
         if not reasoning_text:
             return default
@@ -1001,7 +1103,7 @@ CRITICAL INSTRUCTIONS:
     
     def _create_emergency_structured_analysis(self, company_name: str, company_number: str, 
                                             error_message: str) -> Dict[str, Any]:
-        """Emergency structured analysis when Turbo processing fails"""
+        """Emergency structured analysis when AI processing fails"""
         return {
             'company_name': company_name,
             'company_number': company_number,
@@ -1031,9 +1133,10 @@ CRITICAL INSTRUCTIONS:
             
             'analysis_metadata': {
                 'confidence_level': 'emergency_low',
-                'analysis_type': 'emergency_turbo_assessment_v5.0',
+                'analysis_type': f'emergency_{self.client_type}_assessment_v5.0',
                 'analysis_timestamp': datetime.now().isoformat(),
                 'processing_note': f'Emergency assessment due to: {error_message}',
-                'recommendation': 'Immediate comprehensive strategic analysis recommended with enhanced documentation and system optimization'
+                'recommendation': 'Immediate comprehensive strategic analysis recommended with enhanced documentation and system optimization',
+                'ai_service_attempted': self.client_type
             }
         }
