@@ -220,25 +220,15 @@ class CompleteAIAnalyzer:
                 return False
             
             logger.info("🔧 Attempting OpenAI client initialization...")
-        try:
-            import openai
-            self.logger.info(f"📦 openai version: {openai.__version__}")
-            from openai import OpenAI
-            self.client = OpenAI()
-            self.logger.info("✅ OpenAI client created")
-            self.client_type = "openai"
-        except Exception as e:
-            self.logger.warning(f"⚠️ OpenAI initialization failed: {e}")
-        import openai
-        self.logger.info(f"📦 openai version: {openai.__version__}")
             
             try:
+                import openai
+                logger.info(f"📦 openai version: {openai.__version__}")
                 from openai import OpenAI
                 logger.info(f"✅ OpenAI library imported successfully")
                 
                 # Create client with explicit timeout
                 self.openai_client = OpenAI(
-        self.logger.info("✅ OpenAI client created")
                     api_key=api_key,
                     max_retries=0,
                     timeout=30.0  # Increased timeout for initial test
@@ -372,7 +362,6 @@ class CompleteAIAnalyzer:
             try:
                 from openai import OpenAI
                 client = OpenAI(api_key=openai_key, timeout=10.0)
-        self.logger.info("✅ OpenAI client created")
                 
                 response = client.chat.completions.create(
                     model="gpt-3.5-turbo",
