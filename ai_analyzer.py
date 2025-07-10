@@ -2,6 +2,7 @@
 """
 Complete AI Analyzer with Exact Business and Risk Strategy Archetypes
 Generates reports in the specified format with proper SWOT analysis
+Thread-safe for Render deployment
 """
 
 import os
@@ -10,7 +11,7 @@ import logging
 import json
 import time
 import random
-import signal
+import threading
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
@@ -21,6 +22,36 @@ logging.basicConfig(
     stream=sys.stdout
 )
 logger = logging.getLogger(__name__)
+
+class TimeoutManager:
+    """Thread-safe timeout manager for Render deployment"""
+    
+    def __init__(self, timeout_seconds: float):
+        self.timeout_seconds = timeout_seconds
+        self.start_time = None
+    
+    def start(self):
+        """Start the timeout timer"""
+        self.start_time = time.time()
+    
+    def check_timeout(self):
+        """Check if timeout has been exceeded"""
+        if self.start_time is None:
+            return False
+        
+        elapsed = time.time() - self.start_time
+        if elapsed > self.timeout_seconds:
+            raise TimeoutError(f"Operation timed out after {elapsed:.1f} seconds")
+        
+        return False
+    
+    def remaining_time(self) -> float:
+        """Get remaining time in seconds"""
+        if self.start_time is None:
+            return self.timeout_seconds
+        
+        elapsed = time.time() - self.start_time
+        return max(0, self.timeout_seconds - elapsed)
 
 class CompleteAIAnalyzer:
     """
@@ -178,20 +209,13 @@ class CompleteAIAnalyzer:
                                   extracted_content: Optional[List[Dict[str, Any]]] = None,
                                   analysis_context: Optional[str] = None) -> Dict[str, Any]:
         """
-        Complete analysis generating full report format
+        Complete analysis generating full report format (thread-safe for Render)
         """
         start_time = time.time()
         
         logger.info(f"🚀 Starting complete analysis for {company_name} ({company_number})")
         logger.info(f"📊 Content length: {len(content):,} characters")
         logger.info(f"🔧 Client type: {self.client_type}")
-        
-        # Set timeout for Render
-        def timeout_handler(signum, frame):
-            raise TimeoutError("Analysis timeout")
-        
-        signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(self.request_timeout)
         
         try:
             if self.client_type == "no_clients_available":
@@ -221,39 +245,43 @@ class CompleteAIAnalyzer:
             # Emergency fallback
             return self._create_emergency_analysis(company_name, company_number, "All AI services failed")
         
-        except TimeoutError:
-            logger.error("❌ Analysis timed out")
-            return self._create_emergency_analysis(company_name, company_number, "Analysis timeout")
-        
         except Exception as e:
             logger.error(f"❌ Analysis failed: {e}")
             return self._create_emergency_analysis(company_name, company_number, str(e))
-        
-        finally:
-            signal.alarm(0)
     
     def _analyze_with_openai(self, content: str, company_name: str, company_number: str,
                            analysis_context: Optional[str]) -> Optional[Dict[str, Any]]:
-        """Analyze using OpenAI with complete archetype definitions"""
+        """Analyze using OpenAI with thread-safe timeout"""
         
         if not self.openai_client:
             return None
+        
+        # Create timeout manager
+        timeout_manager = TimeoutManager(20.0)
+        timeout_manager.start()
         
         models = [self.primary_model, self.fallback_model]
         
         for model in models:
             for attempt in range(self.max_retries):
                 try:
+                    # Check timeout before each attempt
+                    timeout_manager.check_timeout()
+                    
                     logger.info(f"🔄 OpenAI: {model}, attempt {attempt + 1}")
                     
                     messages = self._create_complete_openai_messages(content, company_name, analysis_context)
+                    
+                    # Use remaining time for API timeout
+                    api_timeout = min(timeout_manager.remaining_time(), 15.0)
                     
                     response = self.openai_client.chat.completions.create(
                         model=model,
                         messages=messages,
                         max_tokens=self.max_output_tokens,
                         temperature=0.1,
-                        response_format={"type": "json_object"}
+                        response_format={"type": "json_object"},
+                        timeout=api_timeout
                     )
                     
                     response_text = response.choices[0].message.content
@@ -263,11 +291,20 @@ class CompleteAIAnalyzer:
                     if analysis:
                         return self._create_complete_report(analysis, company_name, company_number, model, "openai")
                 
+                except TimeoutError as e:
+                    logger.error(f"❌ OpenAI timeout: {e}")
+                    return None
+                
                 except Exception as e:
                     logger.warning(f"⚠️ OpenAI attempt failed: {e}")
                     if self._is_retryable_error(str(e)) and attempt < self.max_retries - 1:
-                        time.sleep(self.base_retry_delay)
-                        continue
+                        # Check if we have time for retry
+                        if timeout_manager.remaining_time() > 3:
+                            time.sleep(min(self.base_retry_delay, timeout_manager.remaining_time() / 2))
+                            continue
+                        else:
+                            logger.warning("⚠️ Not enough time remaining for retry")
+                            return None
                     else:
                         break
         
@@ -275,22 +312,33 @@ class CompleteAIAnalyzer:
     
     def _analyze_with_anthropic(self, content: str, company_name: str, company_number: str,
                               analysis_context: Optional[str]) -> Optional[Dict[str, Any]]:
-        """Analyze using Anthropic"""
+        """Analyze using Anthropic with thread-safe timeout"""
         
         if not self.anthropic_client:
             return None
         
+        # Create timeout manager
+        timeout_manager = TimeoutManager(15.0)
+        timeout_manager.start()
+        
         for attempt in range(self.max_retries):
             try:
+                # Check timeout before each attempt
+                timeout_manager.check_timeout()
+                
                 logger.info(f"🔄 Anthropic attempt {attempt + 1}")
                 
                 prompt = self._create_complete_anthropic_prompt(content, company_name, analysis_context)
+                
+                # Use remaining time for API timeout
+                api_timeout = min(timeout_manager.remaining_time(), 12.0)
                 
                 response = self.anthropic_client.messages.create(
                     model="claude-3-sonnet-20240229",
                     max_tokens=self.max_output_tokens,
                     temperature=0.1,
-                    messages=[{"role": "user", "content": prompt}]
+                    messages=[{"role": "user", "content": prompt}],
+                    timeout=api_timeout
                 )
                 
                 response_text = response.content[0].text
@@ -300,10 +348,20 @@ class CompleteAIAnalyzer:
                 if analysis:
                     return self._create_complete_report(analysis, company_name, company_number, "claude-3-sonnet", "anthropic")
             
+            except TimeoutError as e:
+                logger.error(f"❌ Anthropic timeout: {e}")
+                return None
+            
             except Exception as e:
                 logger.warning(f"⚠️ Anthropic attempt failed: {e}")
                 if attempt < self.max_retries - 1:
-                    time.sleep(self.base_retry_delay)
+                    # Check if we have time for retry
+                    if timeout_manager.remaining_time() > 2:
+                        time.sleep(min(self.base_retry_delay, timeout_manager.remaining_time() / 2))
+                        continue
+                    else:
+                        logger.warning("⚠️ Not enough time remaining for retry")
+                        return None
         
         return None
     
