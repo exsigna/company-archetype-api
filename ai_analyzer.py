@@ -2,7 +2,7 @@
 """
 Complete AI Analyzer with Exact Business and Risk Strategy Archetypes
 Generates reports in the specified format with proper SWOT analysis
-Thread-safe for Render deployment
+Thread-safe for Render deployment with enhanced debugging
 """
 
 import os
@@ -125,85 +125,278 @@ class CompleteAIAnalyzer:
         logger.info(f"🛡️ Risk archetypes: {len(self.risk_archetypes)} defined")
     
     def _log_environment_debug(self):
-        """Log environment information for debugging"""
-        logger.info("🔍 Environment Debug Information:")
+        """Enhanced environment debugging"""
+        logger.info("🔍 Enhanced Environment Debug Information:")
         
-        openai_key = os.environ.get('OPENAI_API_KEY')
-        anthropic_key = os.environ.get('ANTHROPIC_API_KEY')
+        # Get keys with whitespace stripping
+        openai_key = os.environ.get('OPENAI_API_KEY', '').strip()
+        anthropic_key = os.environ.get('ANTHROPIC_API_KEY', '').strip()
         
+        # Detailed OpenAI key analysis
         if openai_key:
-            logger.info(f"   ✅ OPENAI_API_KEY found: {openai_key[:10]}...")
+            logger.info(f"   ✅ OPENAI_API_KEY found")
+            logger.info(f"   📏 Length: {len(openai_key)} characters")
+            logger.info(f"   🔑 Prefix: {openai_key[:15]}...")
+            logger.info(f"   📝 Format check: {'✅ Valid sk-proj format' if openai_key.startswith('sk-proj-') else '⚠️ Unexpected format'}")
+            
+            # Check for common issues
+            if ' ' in openai_key:
+                logger.warning(f"   ⚠️ Key contains spaces!")
+            if '\n' in openai_key or '\r' in openai_key:
+                logger.warning(f"   ⚠️ Key contains newlines!")
+            if len(openai_key) < 50:
+                logger.warning(f"   ⚠️ Key seems too short!")
         else:
             logger.error("   ❌ OPENAI_API_KEY not found!")
         
+        # Detailed Anthropic key analysis
         if anthropic_key:
-            logger.info(f"   ✅ ANTHROPIC_API_KEY found: {anthropic_key[:10]}...")
+            logger.info(f"   ✅ ANTHROPIC_API_KEY found")
+            logger.info(f"   📏 Length: {len(anthropic_key)} characters")
+            logger.info(f"   🔑 Prefix: {anthropic_key[:15]}...")
+            logger.info(f"   📝 Format check: {'✅ Valid sk-ant format' if anthropic_key.startswith('sk-ant-') else '⚠️ Unexpected format'}")
+            
+            # Check for common issues
+            if ' ' in anthropic_key:
+                logger.warning(f"   ⚠️ Key contains spaces!")
+            if '\n' in anthropic_key or '\r' in anthropic_key:
+                logger.warning(f"   ⚠️ Key contains newlines!")
+            if len(anthropic_key) < 50:
+                logger.warning(f"   ⚠️ Key seems too short!")
         else:
             logger.info("   ℹ️ ANTHROPIC_API_KEY not found (fallback only)")
+        
+        # Environment info
+        logger.info(f"   🌍 Platform: {sys.platform}")
+        logger.info(f"   🐍 Python: {sys.version}")
+        logger.info(f"   📦 Working directory: {os.getcwd()}")
+        
+        # Check for Render-specific variables
+        render_vars = {
+            'RENDER': os.environ.get('RENDER'),
+            'RENDER_SERVICE_ID': os.environ.get('RENDER_SERVICE_ID'),
+            'RENDER_SERVICE_NAME': os.environ.get('RENDER_SERVICE_NAME'),
+        }
+        for key, value in render_vars.items():
+            if value:
+                logger.info(f"   🏗️ {key}: {value}")
     
     def _initialize_clients(self):
-        """Initialize AI clients"""
+        """Initialize AI clients with enhanced error handling"""
         
         # Try OpenAI first
-        if self._init_openai():
+        openai_success = self._init_openai()
+        if openai_success:
             self.client_type = "openai_primary"
             logger.info("✅ OpenAI configured as primary service")
         else:
             logger.warning("⚠️ OpenAI initialization failed")
         
         # Try Anthropic as fallback
-        if self._init_anthropic():
+        anthropic_success = self._init_anthropic()
+        if anthropic_success:
             if self.client_type == "uninitialized":
                 self.client_type = "anthropic_fallback"
                 logger.info("✅ Anthropic configured as fallback service")
+            else:
+                logger.info("✅ Anthropic available as backup")
         else:
             logger.warning("⚠️ Anthropic initialization failed")
         
+        # Final status
         if self.client_type == "uninitialized":
             self.client_type = "no_clients_available"
             logger.error("❌ No AI clients available")
+            
+        logger.info(f"🎯 Final client configuration: {self.client_type}")
     
     def _init_openai(self) -> bool:
-        """Initialize OpenAI client"""
+        """Initialize OpenAI client with detailed error handling"""
         try:
-            api_key = os.environ.get('OPENAI_API_KEY')
+            # Get and clean API key
+            api_key = os.environ.get('OPENAI_API_KEY', '').strip()
             if not api_key:
                 logger.warning("⚠️ OPENAI_API_KEY not found")
                 return False
             
+            logger.info("🔧 Attempting OpenAI client initialization...")
+            
             try:
                 from openai import OpenAI
+                logger.info(f"✅ OpenAI library imported successfully")
+                
+                # Create client with explicit timeout
                 self.openai_client = OpenAI(
                     api_key=api_key,
                     max_retries=0,
-                    timeout=20.0
+                    timeout=30.0  # Increased timeout for initial test
                 )
+                logger.info("✅ OpenAI client created")
                 
-                # Test connection
+                # Test connection with simple call
+                logger.info("🧪 Testing OpenAI connection...")
                 test_response = self.openai_client.models.list()
-                logger.info("✅ OpenAI client test successful")
+                models = [model.id for model in test_response.data]
+                gpt4_models = [m for m in models if 'gpt-4' in m]
+                
+                logger.info(f"✅ OpenAI connection successful!")
+                logger.info(f"📊 Available models: {len(models)}")
+                logger.info(f"🧠 GPT-4 models: {len(gpt4_models)}")
+                logger.info(f"🎯 Primary model available: {'✅' if self.primary_model in models else '❌'}")
+                
                 return True
+                
             except ImportError as e:
-                logger.error(f"❌ OpenAI library not available: {e}")
+                logger.error(f"❌ OpenAI library import failed: {e}")
+                logger.error("💡 Solution: Add 'openai>=1.0.0' to requirements.txt")
                 return False
+                
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"❌ OpenAI client test failed: {error_msg}")
+                
+                # Provide specific error guidance
+                if "401" in error_msg or "unauthorized" in error_msg.lower():
+                    logger.error("💡 API key authentication failed - check key validity")
+                elif "403" in error_msg or "forbidden" in error_msg.lower():
+                    logger.error("💡 API access forbidden - check account status")
+                elif "timeout" in error_msg.lower():
+                    logger.error("💡 Connection timeout - network issue")
+                elif "connection" in error_msg.lower():
+                    logger.error("💡 Connection failed - check network/firewall")
+                else:
+                    logger.error(f"💡 Unexpected error type: {type(e).__name__}")
+                
+                return False
+                
         except Exception as e:
-            logger.error(f"❌ OpenAI initialization failed: {e}")
+            logger.error(f"❌ OpenAI initialization completely failed: {e}")
             return False
     
     def _init_anthropic(self) -> bool:
-        """Initialize Anthropic client"""
+        """Initialize Anthropic client with detailed error handling"""
         try:
-            api_key = os.environ.get('ANTHROPIC_API_KEY')
+            # Get and clean API key
+            api_key = os.environ.get('ANTHROPIC_API_KEY', '').strip()
             if not api_key:
+                logger.info("ℹ️ ANTHROPIC_API_KEY not found - skipping")
                 return False
             
-            import anthropic
-            self.anthropic_client = anthropic.Anthropic(api_key=api_key, timeout=15.0)
-            logger.info("✅ Anthropic client initialized")
-            return True
+            logger.info("🔧 Attempting Anthropic client initialization...")
+            
+            try:
+                import anthropic
+                logger.info("✅ Anthropic library imported successfully")
+                
+                # Create client
+                self.anthropic_client = anthropic.Anthropic(
+                    api_key=api_key, 
+                    timeout=30.0
+                )
+                logger.info("✅ Anthropic client created")
+                
+                # Test connection with minimal call
+                logger.info("🧪 Testing Anthropic connection...")
+                test_response = self.anthropic_client.messages.create(
+                    model="claude-3-sonnet-20240229",
+                    max_tokens=5,
+                    messages=[{"role": "user", "content": "Hi"}]
+                )
+                
+                logger.info("✅ Anthropic connection successful!")
+                logger.info(f"📝 Test response: {test_response.content[0].text}")
+                return True
+                
+            except ImportError as e:
+                logger.info(f"ℹ️ Anthropic library not available: {e}")
+                logger.info("💡 Solution: Add 'anthropic>=0.8.0' to requirements.txt")
+                return False
+                
+            except Exception as e:
+                error_msg = str(e)
+                logger.warning(f"⚠️ Anthropic client test failed: {error_msg}")
+                
+                # Provide specific error guidance
+                if "401" in error_msg or "authentication_error" in error_msg:
+                    logger.warning("💡 Anthropic API key authentication failed")
+                elif "403" in error_msg or "forbidden" in error_msg.lower():
+                    logger.warning("💡 Anthropic API access forbidden")
+                elif "rate_limit" in error_msg.lower():
+                    logger.warning("💡 Anthropic rate limit exceeded")
+                else:
+                    logger.warning(f"💡 Anthropic error type: {type(e).__name__}")
+                
+                return False
+                
         except Exception as e:
             logger.warning(f"⚠️ Anthropic initialization failed: {e}")
             return False
+    
+    def test_api_connections(self) -> Dict[str, Any]:
+        """Test API connections and return detailed results"""
+        results = {
+            "timestamp": datetime.now().isoformat(),
+            "openai": {"status": "not_tested"},
+            "anthropic": {"status": "not_tested"}
+        }
+        
+        # Test OpenAI
+        openai_key = os.environ.get('OPENAI_API_KEY', '').strip()
+        if openai_key:
+            try:
+                from openai import OpenAI
+                client = OpenAI(api_key=openai_key, timeout=10.0)
+                
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": "Say 'OpenAI test successful'"}],
+                    max_tokens=10
+                )
+                
+                results["openai"] = {
+                    "status": "SUCCESS",
+                    "response": response.choices[0].message.content,
+                    "model": "gpt-3.5-turbo"
+                }
+                
+            except Exception as e:
+                results["openai"] = {
+                    "status": "FAILED",
+                    "error": str(e),
+                    "error_type": type(e).__name__
+                }
+        else:
+            results["openai"] = {"status": "NO_KEY"}
+        
+        # Test Anthropic
+        anthropic_key = os.environ.get('ANTHROPIC_API_KEY', '').strip()
+        if anthropic_key:
+            try:
+                import anthropic
+                client = anthropic.Anthropic(api_key=anthropic_key, timeout=10.0)
+                
+                response = client.messages.create(
+                    model="claude-3-sonnet-20240229",
+                    max_tokens=10,
+                    messages=[{"role": "user", "content": "Say 'Anthropic test successful'"}]
+                )
+                
+                results["anthropic"] = {
+                    "status": "SUCCESS",
+                    "response": response.content[0].text,
+                    "model": "claude-3-sonnet-20240229"
+                }
+                
+            except Exception as e:
+                results["anthropic"] = {
+                    "status": "FAILED",
+                    "error": str(e),
+                    "error_type": type(e).__name__
+                }
+        else:
+            results["anthropic"] = {"status": "NO_KEY"}
+        
+        return results
     
     def analyze_for_board_optimized(self, content: str, company_name: str, company_number: str,
                                   extracted_content: Optional[List[Dict[str, Any]]] = None,
@@ -219,21 +412,24 @@ class CompleteAIAnalyzer:
         
         try:
             if self.client_type == "no_clients_available":
+                logger.error("❌ No AI clients available - using emergency analysis")
                 return self._create_emergency_analysis(company_name, company_number, "No AI clients available")
             
             # Optimize content
             optimized_content = self._optimize_content(content)
             
-            # Try OpenAI analysis
-            if self.openai_client and self.client_type in ["openai_primary", "anthropic_fallback"]:
-                logger.info("🎯 Attempting OpenAI analysis...")
+            # Try OpenAI analysis first if available
+            if self.openai_client and self.client_type == "openai_primary":
+                logger.info("🎯 Attempting OpenAI analysis (primary)...")
                 result = self._analyze_with_openai(optimized_content, company_name, company_number, analysis_context)
                 if result:
                     analysis_time = time.time() - start_time
                     logger.info(f"✅ OpenAI analysis completed in {analysis_time:.2f}s")
                     return result
+                else:
+                    logger.warning("⚠️ OpenAI primary analysis failed, trying Anthropic...")
             
-            # Try Anthropic fallback
+            # Try Anthropic analysis
             if self.anthropic_client:
                 logger.info("🎯 Attempting Anthropic analysis...")
                 result = self._analyze_with_anthropic(optimized_content, company_name, company_number, analysis_context)
@@ -241,12 +437,26 @@ class CompleteAIAnalyzer:
                     analysis_time = time.time() - start_time
                     logger.info(f"✅ Anthropic analysis completed in {analysis_time:.2f}s")
                     return result
+                else:
+                    logger.warning("⚠️ Anthropic analysis failed")
+            
+            # If OpenAI was set as fallback but primary failed, try it now
+            if self.openai_client and self.client_type == "anthropic_fallback":
+                logger.info("🎯 Attempting OpenAI analysis (fallback)...")
+                result = self._analyze_with_openai(optimized_content, company_name, company_number, analysis_context)
+                if result:
+                    analysis_time = time.time() - start_time
+                    logger.info(f"✅ OpenAI fallback analysis completed in {analysis_time:.2f}s")
+                    return result
             
             # Emergency fallback
+            logger.error("❌ All AI analysis methods failed")
             return self._create_emergency_analysis(company_name, company_number, "All AI services failed")
         
         except Exception as e:
-            logger.error(f"❌ Analysis failed: {e}")
+            logger.error(f"❌ Analysis failed with exception: {e}")
+            import traceback
+            logger.error(f"📊 Traceback: {traceback.format_exc()}")
             return self._create_emergency_analysis(company_name, company_number, str(e))
     
     def _analyze_with_openai(self, content: str, company_name: str, company_number: str,
@@ -254,6 +464,7 @@ class CompleteAIAnalyzer:
         """Analyze using OpenAI with thread-safe timeout"""
         
         if not self.openai_client:
+            logger.warning("⚠️ OpenAI client not available")
             return None
         
         # Create timeout manager
@@ -290,24 +501,32 @@ class CompleteAIAnalyzer:
                     analysis = self._parse_json_response(response_text)
                     if analysis:
                         return self._create_complete_report(analysis, company_name, company_number, model, "openai")
+                    else:
+                        logger.warning("⚠️ Failed to parse OpenAI JSON response")
                 
                 except TimeoutError as e:
                     logger.error(f"❌ OpenAI timeout: {e}")
                     return None
                 
                 except Exception as e:
-                    logger.warning(f"⚠️ OpenAI attempt failed: {e}")
-                    if self._is_retryable_error(str(e)) and attempt < self.max_retries - 1:
+                    error_msg = str(e)
+                    logger.warning(f"⚠️ OpenAI attempt {attempt + 1} failed: {error_msg}")
+                    
+                    if self._is_retryable_error(error_msg) and attempt < self.max_retries - 1:
                         # Check if we have time for retry
                         if timeout_manager.remaining_time() > 3:
-                            time.sleep(min(self.base_retry_delay, timeout_manager.remaining_time() / 2))
+                            retry_delay = min(self.base_retry_delay, timeout_manager.remaining_time() / 2)
+                            logger.info(f"⏰ Retrying in {retry_delay:.1f}s...")
+                            time.sleep(retry_delay)
                             continue
                         else:
                             logger.warning("⚠️ Not enough time remaining for retry")
                             return None
                     else:
+                        logger.error(f"❌ Non-retryable error or max retries reached: {error_msg}")
                         break
         
+        logger.error("❌ All OpenAI attempts failed")
         return None
     
     def _analyze_with_anthropic(self, content: str, company_name: str, company_number: str,
@@ -315,6 +534,7 @@ class CompleteAIAnalyzer:
         """Analyze using Anthropic with thread-safe timeout"""
         
         if not self.anthropic_client:
+            logger.warning("⚠️ Anthropic client not available")
             return None
         
         # Create timeout manager
@@ -347,22 +567,31 @@ class CompleteAIAnalyzer:
                 analysis = self._parse_json_response(response_text)
                 if analysis:
                     return self._create_complete_report(analysis, company_name, company_number, "claude-3-sonnet", "anthropic")
+                else:
+                    logger.warning("⚠️ Failed to parse Anthropic JSON response")
             
             except TimeoutError as e:
                 logger.error(f"❌ Anthropic timeout: {e}")
                 return None
             
             except Exception as e:
-                logger.warning(f"⚠️ Anthropic attempt failed: {e}")
+                error_msg = str(e)
+                logger.warning(f"⚠️ Anthropic attempt {attempt + 1} failed: {error_msg}")
+                
                 if attempt < self.max_retries - 1:
                     # Check if we have time for retry
                     if timeout_manager.remaining_time() > 2:
-                        time.sleep(min(self.base_retry_delay, timeout_manager.remaining_time() / 2))
+                        retry_delay = min(self.base_retry_delay, timeout_manager.remaining_time() / 2)
+                        logger.info(f"⏰ Retrying in {retry_delay:.1f}s...")
+                        time.sleep(retry_delay)
                         continue
                     else:
                         logger.warning("⚠️ Not enough time remaining for retry")
                         return None
+                else:
+                    logger.error(f"❌ Max retries reached: {error_msg}")
         
+        logger.error("❌ All Anthropic attempts failed")
         return None
     
     def _create_complete_openai_messages(self, content: str, company_name: str, 
@@ -733,6 +962,10 @@ COMPANY CONTENT:{context_note}
             "archetypes": {
                 "business_count": len(self.business_archetypes),
                 "risk_count": len(self.risk_archetypes)
+            },
+            "environment": {
+                "openai_key_present": bool(os.environ.get('OPENAI_API_KEY', '').strip()),
+                "anthropic_key_present": bool(os.environ.get('ANTHROPIC_API_KEY', '').strip())
             }
         }
     
@@ -745,7 +978,8 @@ COMPANY CONTENT:{context_note}
             "client_type": status["client_type"],
             "timestamp": datetime.now().isoformat(),
             "ready": status["ready"],
-            "archetypes_loaded": status["archetypes"]
+            "archetypes_loaded": status["archetypes"],
+            "details": status["environment"]
         }
 
 
