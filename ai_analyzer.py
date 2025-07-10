@@ -2,7 +2,7 @@
 """
 Enhanced AI Archetype Analyzer for Board-Level Strategic Analysis
 Delivers structured report format with dominant/secondary archetypes and detailed rationale
-FIXED: Proper archetype name extraction and fallback logic
+FIXED: Proper archetype name extraction and fallback logic + NO TEXT TRUNCATION
 """
 
 import os
@@ -26,7 +26,7 @@ class ExecutiveAIAnalyzer:
         self.client_type = "fallback"
         self.openai_client = None
         
-        logger.info("🏛️ Executive AI Analyzer v4.2 - Enhanced Archetype Extraction Engine")
+        logger.info("🏛️ Executive AI Analyzer v4.3 - Fixed Truncation Engine")
         
         # Initialize AI providers
         self._init_openai()
@@ -188,7 +188,7 @@ class ExecutiveAIAnalyzer:
             }
         }
         
-        logger.info(f"✅ Executive AI Analyzer v4.2 initialized. Analysis engine: {self.client_type}")
+        logger.info(f"✅ Executive AI Analyzer v4.3 initialized. Analysis engine: {self.client_type}")
     
     def _init_openai(self):
         """Initialize OpenAI with enhanced error handling"""
@@ -218,8 +218,8 @@ class ExecutiveAIAnalyzer:
         Executive-grade archetype analysis following structured report format
         
         Returns structured analysis with:
-        1. Dominant archetype + rationale (100 words)
-        2. Secondary archetype + rationale (70 words) 
+        1. Dominant archetype + rationale (100+ words)
+        2. Secondary archetype + rationale (70+ words) 
         3. Material changes over period
         4. SWOT analysis for archetype combination
         """
@@ -246,7 +246,7 @@ class ExecutiveAIAnalyzer:
             return self._create_emergency_structured_analysis(company_name, company_number, str(e))
     
     def _create_structured_report_prompt(self, content: str, company_name: str, analysis_context: Optional[str]) -> str:
-        """Create prompt for structured report analysis with strict word count requirements"""
+        """Create prompt for structured report analysis with flexible word count requirements"""
         context_note = f"\n\nANALYSIS CONTEXT: {analysis_context}" if analysis_context else ""
         
         return f"""
@@ -261,27 +261,27 @@ RISK STRATEGY ARCHETYPES:
 COMPANY DOCUMENTS FOR ANALYSIS:
 {content}{context_note}
 
-CRITICAL WORD COUNT REQUIREMENTS:
-- Business dominant rationale: EXACTLY 100 words
-- Business secondary rationale: EXACTLY 70 words  
-- Risk dominant rationale: EXACTLY 100 words
-- Risk secondary rationale: EXACTLY 70 words
+WORD COUNT REQUIREMENTS (MINIMUM):
+- Business dominant rationale: MINIMUM 100 words (can be longer for comprehensive analysis)
+- Business secondary rationale: MINIMUM 70 words (can be longer for thorough explanation)
+- Risk dominant rationale: MINIMUM 100 words (can be longer for detailed assessment)
+- Risk secondary rationale: MINIMUM 70 words (can be longer for complete context)
 
 REQUIRED OUTPUT FORMAT (JSON):
 {{
   "business_strategy": {{
     "dominant_archetype": "[exact archetype name]",
-    "dominant_rationale": "[EXACTLY 100 WORDS - comprehensive rationale with specific evidence from documents, strategic positioning analysis, competitive context, and detailed justification for this primary archetype classification]",
+    "dominant_rationale": "[MINIMUM 100 WORDS - comprehensive rationale with specific evidence from documents, strategic positioning analysis, competitive context, and detailed justification for this primary archetype classification. Provide complete thoughts and full analysis.]",
     "secondary_archetype": "[exact archetype name]", 
-    "secondary_rationale": "[EXACTLY 70 WORDS - detailed secondary influence explanation with supporting evidence and strategic context]",
+    "secondary_rationale": "[MINIMUM 70 WORDS - detailed secondary influence explanation with supporting evidence and strategic context. Ensure complete explanation.]",
     "material_changes": "[description of any archetype changes over period or 'No material changes identified']",
     "evidence_quotes": ["Quote 1", "Quote 2", "Quote 3"]
   }},
   "risk_strategy": {{
     "dominant_archetype": "[exact archetype name]",
-    "dominant_rationale": "[EXACTLY 100 WORDS - comprehensive risk management rationale with specific evidence, governance framework analysis, regulatory context, and detailed justification]",
+    "dominant_rationale": "[MINIMUM 100 WORDS - comprehensive risk management rationale with specific evidence, governance framework analysis, regulatory context, and detailed justification. Complete analysis required.]",
     "secondary_archetype": "[exact archetype name]",
-    "secondary_rationale": "[EXACTLY 70 WORDS - detailed secondary risk influence with supporting evidence and framework context]", 
+    "secondary_rationale": "[MINIMUM 70 WORDS - detailed secondary risk influence with supporting evidence and framework context. Full explanation needed.]", 
     "material_changes": "[description of any archetype changes over period or 'No material changes identified']",
     "evidence_quotes": ["Quote 1", "Quote 2"]
   }},
@@ -312,15 +312,15 @@ REQUIRED OUTPUT FORMAT (JSON):
 }}
 
 DETAILED RATIONALE REQUIREMENTS:
-1. BUSINESS DOMINANT (100 words): Include specific evidence from documents, strategic positioning analysis, market context, operational approach, competitive differentiation, growth strategy, and comprehensive justification for archetype selection.
+1. BUSINESS DOMINANT (100+ words): Include specific evidence from documents, strategic positioning analysis, market context, operational approach, competitive differentiation, growth strategy, and comprehensive justification for archetype selection. COMPLETE YOUR THOUGHTS - do not cut off mid-sentence.
 
-2. BUSINESS SECONDARY (70 words): Include supporting evidence, complementary strategic elements, additional positioning context, and clear connection to primary archetype.
+2. BUSINESS SECONDARY (70+ words): Include supporting evidence, complementary strategic elements, additional positioning context, and clear connection to primary archetype. ENSURE COMPLETE EXPLANATION.
 
-3. RISK DOMINANT (100 words): Include governance framework analysis, regulatory compliance approach, risk appetite evidence, control structures, capital management philosophy, stress testing capabilities, and comprehensive risk strategy justification.
+3. RISK DOMINANT (100+ words): Include governance framework analysis, regulatory compliance approach, risk appetite evidence, control structures, capital management philosophy, stress testing capabilities, and comprehensive risk strategy justification. FINISH ALL ANALYSIS.
 
-4. RISK SECONDARY (70 words): Include secondary risk influences, complementary control elements, additional governance context, and supporting risk management characteristics.
+4. RISK SECONDARY (70+ words): Include secondary risk influences, complementary control elements, additional governance context, and supporting risk management characteristics. COMPLETE THE REASONING.
 
-MANDATORY WORD COUNT CHECK: Each rationale section must contain the exact word count specified. Count words carefully and ensure precision.
+IMPORTANT: Provide COMPLETE analysis that meets minimum word counts but prioritizes thorough, untruncated explanations. Quality and completeness are more important than exact word counts.
 
 Use EXACT archetype names from the provided lists only. Include specific quotes and evidence from the company documents provided.
 """
@@ -398,12 +398,12 @@ Use EXACT archetype names from the provided lists only. Include specific quotes 
                     messages=[
                         {
                             "role": "system", 
-                            "content": "You are a strategic consultant delivering structured archetype analysis. You MUST provide exactly 100 words for dominant rationales and exactly 70 words for secondary rationales. Count words carefully and ensure precision."
+                            "content": "You are a strategic consultant delivering structured archetype analysis. Provide comprehensive rationales with MINIMUM word counts (100+ for dominant, 70+ for secondary). Prioritize complete, untruncated analysis over exact word counts. Always finish your thoughts completely."
                         },
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.1,  # Very low for consistency
-                    max_tokens=2500,
+                    max_tokens=3500,  # INCREASED from 2500 to allow longer responses
                     top_p=0.9
                 )
                 
@@ -439,8 +439,8 @@ Use EXACT archetype names from the provided lists only. Include specific quotes 
                 logger.warning("AI response missing required structure, using fallback")
                 return self._create_fallback_from_partial_response(response, extracted_content)
             
-            # Ensure exact word counts in rationales
-            analysis = self._validate_and_fix_word_counts(analysis)
+            # Ensure minimum word counts in rationales (NO TRUNCATION)
+            analysis = self._validate_and_ensure_minimum_word_counts(analysis)
             
             return analysis
             
@@ -472,43 +472,45 @@ Use EXACT archetype names from the provided lists only. Include specific quotes 
         
         return True
 
-    def _validate_and_fix_word_counts(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """Ensure rationales meet exact word count requirements"""
+    def _validate_and_ensure_minimum_word_counts(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Ensure rationales meet minimum word count requirements WITHOUT TRUNCATION"""
         
         # Fix business strategy rationales
         business = analysis.get('business_strategy', {})
         if 'dominant_rationale' in business:
-            business['dominant_rationale'] = self._fix_word_count(business['dominant_rationale'], 100)
+            business['dominant_rationale'] = self._ensure_minimum_word_count(business['dominant_rationale'], 100)
         if 'secondary_rationale' in business:
-            business['secondary_rationale'] = self._fix_word_count(business['secondary_rationale'], 70)
+            business['secondary_rationale'] = self._ensure_minimum_word_count(business['secondary_rationale'], 70)
         
         # Fix risk strategy rationales
         risk = analysis.get('risk_strategy', {})
         if 'dominant_rationale' in risk:
-            risk['dominant_rationale'] = self._fix_word_count(risk['dominant_rationale'], 100)
+            risk['dominant_rationale'] = self._ensure_minimum_word_count(risk['dominant_rationale'], 100)
         if 'secondary_rationale' in risk:
-            risk['secondary_rationale'] = self._fix_word_count(risk['secondary_rationale'], 70)
+            risk['secondary_rationale'] = self._ensure_minimum_word_count(risk['secondary_rationale'], 70)
         
         return analysis
 
-    def _fix_word_count(self, text: str, target_count: int) -> str:
-        """Fix text to meet exact word count"""
+    def _ensure_minimum_word_count(self, text: str, minimum_count: int) -> str:
+        """Ensure text meets minimum word count WITHOUT TRUNCATING existing content"""
         words = text.split()
         
-        if len(words) == target_count:
+        # If already meets minimum, return as-is (NEVER TRUNCATE)
+        if len(words) >= minimum_count:
             return text
-        elif len(words) > target_count:
-            # Truncate to exact count
-            return ' '.join(words[:target_count])
-        else:
-            # Expand to meet count
-            while len(words) < target_count:
-                if target_count == 100:
-                    words.extend(["Additional", "evidence", "supports", "this", "classification", "through", "comprehensive", "analysis."])
-                else:  # 70 words
-                    words.extend(["Further", "evidence", "reinforces", "this", "positioning."])
+        
+        # Only expand if below minimum
+        while len(words) < minimum_count:
+            if minimum_count >= 100:
+                words.extend(["Additional", "evidence", "supports", "this", "classification", "through", "comprehensive", "analysis."])
+            else:  # 70+ words
+                words.extend(["Further", "evidence", "reinforces", "this", "positioning."])
             
-            return ' '.join(words[:target_count])
+            # Prevent infinite loop
+            if len(words) >= minimum_count:
+                break
+        
+        return ' '.join(words)
 
     def _create_fallback_from_partial_response(self, response: str, extracted_content: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
         """Create fallback analysis from partial AI response"""
@@ -520,8 +522,8 @@ Use EXACT archetype names from the provided lists only. Include specific quotes 
         # Use fallback analysis with any extracted info
         return self._executive_fallback_analysis("", "Unknown Company", "Unknown", extracted_content, None)
     
-    def _create_archetype_rationale(self, archetype: str, content_analysis: Dict[str, Any], word_count: int) -> str:
-        """Create comprehensive rationale for archetype selection meeting exact word count"""
+    def _create_archetype_rationale(self, archetype: str, content_analysis: Dict[str, Any], minimum_word_count: int) -> str:
+        """Create comprehensive rationale for archetype selection meeting minimum word count"""
         
         if archetype in self.business_archetypes:
             archetype_data = self.business_archetypes[archetype]
@@ -532,39 +534,22 @@ Use EXACT archetype names from the provided lists only. Include specific quotes 
             context = archetype_data['strategic_context']
             definition = archetype_data['definition']
         
-        if word_count == 100:
-            # 100-word comprehensive rationale
-            rationale = f"The organization demonstrates clear {archetype} characteristics through its strategic positioning and operational approach. {definition} Evidence from company documentation reveals alignment with this archetype's core principles including {context.lower()}. The strategic framework encompasses market positioning, competitive differentiation, and operational excellence consistent with this classification. Analysis of business model, customer approach, and growth strategy supports this primary archetype designation. Financial performance indicators and strategic communications reinforce the alignment with {archetype} positioning in the competitive landscape. This comprehensive assessment confirms the dominant archetype classification based on multiple strategic and operational indicators throughout the analysis period."
-        else:  # 70 words
-            # 70-word secondary rationale
-            rationale = f"Secondary {archetype} influences complement the primary strategic positioning through {context.lower()}. This archetype provides additional framework context evident in operational approach and strategic communications. Supporting documentation indicates partial alignment with {archetype} characteristics including specific elements of the definition and strategic context. The secondary classification enhances understanding of the organization's comprehensive strategic approach and provides valuable context for strategic planning and competitive positioning analysis."
+        if minimum_word_count >= 100:
+            # 100+ word comprehensive rationale
+            rationale = f"The organization demonstrates clear {archetype} characteristics through its strategic positioning and operational approach. {definition} Evidence from company documentation reveals alignment with this archetype's core principles including {context.lower()}. The strategic framework encompasses market positioning, competitive differentiation, and operational excellence consistent with this classification. Analysis of business model, customer approach, and growth strategy supports this primary archetype designation. Financial performance indicators and strategic communications reinforce the alignment with {archetype} positioning in the competitive landscape. This comprehensive assessment confirms the dominant archetype classification based on multiple strategic and operational indicators throughout the analysis period, providing strong foundation for strategic planning and competitive positioning."
+        else:  # 70+ words
+            # 70+ word secondary rationale
+            rationale = f"Secondary {archetype} influences complement the primary strategic positioning through {context.lower()}. This archetype provides additional framework context evident in operational approach and strategic communications. Supporting documentation indicates partial alignment with {archetype} characteristics including specific elements of the definition and strategic context. The secondary classification enhances understanding of the organization's comprehensive strategic approach and provides valuable context for strategic planning and competitive positioning analysis throughout the assessment period."
         
-        # Ensure exact word count
-        words = rationale.split()
-        if len(words) > word_count:
-            rationale = ' '.join(words[:word_count])
-        elif len(words) < word_count:
-            # Expand to meet word count
-            while len(rationale.split()) < word_count:
-                if word_count == 100:
-                    rationale += " Additional evidence supports this classification through comprehensive strategic analysis and operational assessment."
-                else:
-                    rationale += " Further evidence reinforces this complementary positioning."
-                
-                # Prevent infinite loop
-                if len(rationale.split()) >= word_count:
-                    words = rationale.split()
-                    rationale = ' '.join(words[:word_count])
-                    break
-        
-        return rationale
+        # Ensure minimum word count WITHOUT TRUNCATION
+        return self._ensure_minimum_word_count(rationale, minimum_word_count)
     
     def _executive_fallback_analysis(self, content: str, company_name: str, company_number: str,
                                    extracted_content: Optional[List[Dict[str, Any]]],
                                    analysis_context: Optional[str]) -> Dict[str, Any]:
-        """Enhanced fallback structured analysis with proper word counts"""
+        """Enhanced fallback structured analysis with proper minimum word counts"""
         
-        logger.info("Using enhanced structured fallback analysis with proper word counts")
+        logger.info("Using enhanced structured fallback analysis with minimum word counts")
         
         # Analyze content patterns
         content_analysis = self._analyze_content_for_archetypes(content)
@@ -575,7 +560,7 @@ Use EXACT archetype names from the provided lists only. Include specific quotes 
         risk_dominant = self._determine_risk_archetype_from_content(content_analysis)
         risk_secondary = self._get_complementary_archetype(risk_dominant, self.risk_archetypes)
         
-        # Create structured analysis with exact word counts
+        # Create structured analysis with minimum word counts
         return {
             'business_strategy': {
                 'dominant': business_dominant,
@@ -599,7 +584,7 @@ Use EXACT archetype names from the provided lists only. Include specific quotes 
                 'confidence_level': content_analysis.get('confidence_level', 'medium'),
                 'files_analyzed': len(extracted_content) if extracted_content else 1,
                 'analysis_timestamp': datetime.now().isoformat(),
-                'analysis_type': 'enhanced_fallback_with_exact_word_counts'
+                'analysis_type': 'enhanced_fallback_with_minimum_word_counts_no_truncation'
             }
         }
     
@@ -866,9 +851,9 @@ Use EXACT archetype names from the provided lists only. Include specific quotes 
             # Analysis metadata
             'analysis_metadata': {
                 'confidence_level': metadata.get('confidence_level', 'medium'),
-                'analysis_type': 'structured_archetype_report_v4.2',
+                'analysis_type': 'structured_archetype_report_v4.3_no_truncation',
                 'analysis_timestamp': metadata.get('analysis_timestamp', datetime.now().isoformat()),
-                'methodology': 'Enhanced archetype classification with exact word count rationale and intelligent archetype extraction'
+                'methodology': 'Enhanced archetype classification with minimum word count rationale and intelligent archetype extraction - NO TRUNCATION'
             }
         }
     
@@ -959,7 +944,7 @@ Use EXACT archetype names from the provided lists only. Include specific quotes 
             
             'analysis_metadata': {
                 'confidence_level': 'emergency_low',
-                'analysis_type': 'emergency_structured_assessment_v4.2',
+                'analysis_type': 'emergency_structured_assessment_v4.3_no_truncation',
                 'analysis_timestamp': datetime.now().isoformat(),
                 'processing_note': f'Emergency assessment due to: {error_message}',
                 'recommendation': 'Immediate comprehensive strategic analysis recommended with enhanced documentation'
