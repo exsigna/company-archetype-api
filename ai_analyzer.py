@@ -207,8 +207,9 @@ class OptimizedClaudeAnalyzer:
         Reliable OpenAI GPT-4 Turbo analysis
         """
         
-        if self.client_type != "openai_primary":
-            logger.error("❌ OpenAI client required for reliable analysis")
+        if not self.openai_client:
+            logger.error(f"❌ OpenAI client not initialized. Client type: {self.client_type}")
+            logger.error(f"❌ Available attributes: {[attr for attr in dir(self) if 'client' in attr.lower()]}")
             return None
         
         # Try primary model first, then fallback
@@ -491,8 +492,10 @@ Respond with valid JSON using the exact structure specified."""
         try:
             api_key = os.environ.get('OPENAI_API_KEY')
             if not api_key:
-                logger.error("❌ OpenAI API key required for reliable analysis")
+                logger.error("❌ OpenAI API key not found in environment")
                 return
+            
+            logger.info(f"🔑 OpenAI API key found: {api_key[:10]}...")
                 
             try:
                 from openai import OpenAI
@@ -503,13 +506,28 @@ Respond with valid JSON using the exact structure specified."""
                 )
                 self.client_type = "openai_primary"
                 logger.info("🚀 OpenAI GPT-4 Turbo configured as RELIABLE primary service")
+                logger.info(f"✅ Client type set to: {self.client_type}")
+                
+                # Test the client with a simple call
+                try:
+                    models = self.openai_client.models.list()
+                    logger.info("✅ OpenAI client test successful")
+                except Exception as test_error:
+                    logger.warning(f"⚠️ OpenAI client test failed: {test_error}")
+                
                 return
-            except ImportError:
-                logger.error("❌ OpenAI library required for reliable analysis")
+            except ImportError as import_error:
+                logger.error(f"❌ OpenAI library import failed: {import_error}")
+                return
+            except Exception as client_error:
+                logger.error(f"❌ OpenAI client creation failed: {client_error}")
                 return
                     
         except Exception as e:
             logger.error(f"❌ OpenAI setup failed: {e}")
+            logger.error(f"❌ Environment variables: {list(os.environ.keys())}")
+            import traceback
+            logger.error(f"❌ Full traceback: {traceback.format_exc()}")
     
     def _init_anthropic_fallback(self):
         """Keep Anthropic as emergency fallback only"""
