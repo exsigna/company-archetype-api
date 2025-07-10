@@ -70,14 +70,14 @@ class CompleteAIAnalyzer:
         self.anthropic_client = None
         self.client_type = "uninitialized"
         
-        # Model configuration optimized for Render - Updated to stable GPT-4 Turbo
+        # Model configuration optimized for Render - Updated for large content analysis
         self.primary_model = "gpt-4-turbo"
         self.fallback_model = "gpt-4-turbo-2024-04-09"
         self.max_output_tokens = 4096
         self.max_retries = 3  # Increased from 2 to 3
-        self.base_retry_delay = 2.0  # Increased from 1.5s to 2s
+        self.base_retry_delay = 3.0  # Increased to 3s between retries
         self.max_content_chars = 150000
-        self.request_timeout = 25
+        self.request_timeout = 60  # Increased base timeout
         
         # Complete Business Strategy Archetypes
         self.business_archetypes = {
@@ -494,8 +494,8 @@ class CompleteAIAnalyzer:
             logger.warning("⚠️ OpenAI client not available")
             return None
         
-        # Create timeout manager with longer duration for large content
-        timeout_manager = TimeoutManager(45.0)  # Increased from 20s to 45s
+        # Create timeout manager with much longer duration for large content
+        timeout_manager = TimeoutManager(90.0)  # Increased to 90s for very large content
         timeout_manager.start()
         
         models = [self.primary_model, self.fallback_model]
@@ -510,8 +510,8 @@ class CompleteAIAnalyzer:
                     
                     messages = self._create_complete_openai_messages(content, company_name, analysis_context)
                     
-                    # Use remaining time for API timeout, increased maximum
-                    api_timeout = min(timeout_manager.remaining_time(), 30.0)  # Increased from 15s to 30s
+                    # Use remaining time for API timeout, much longer for complex analysis
+                    api_timeout = min(timeout_manager.remaining_time(), 60.0)  # Increased to 60s per request
                     
                     response = self.openai_client.chat.completions.create(
                         model=model,
@@ -564,8 +564,8 @@ class CompleteAIAnalyzer:
             logger.warning("⚠️ Anthropic client not available")
             return None
         
-        # Create timeout manager with longer duration for large content
-        timeout_manager = TimeoutManager(35.0)  # Increased from 15s to 35s
+        # Create timeout manager with much longer duration for large content
+        timeout_manager = TimeoutManager(70.0)  # Increased to 70s for very large content
         timeout_manager.start()
         
         # Try modern model first, then fallback
@@ -581,8 +581,8 @@ class CompleteAIAnalyzer:
                     
                     prompt = self._create_complete_anthropic_prompt(content, company_name, analysis_context)
                     
-                    # Use remaining time for API timeout, increased maximum
-                    api_timeout = min(timeout_manager.remaining_time(), 25.0)  # Increased from 12s to 25s
+                    # Use remaining time for API timeout, much longer for complex analysis
+                    api_timeout = min(timeout_manager.remaining_time(), 50.0)  # Increased to 50s per request
                     
                     response = self.anthropic_client.messages.create(
                         model=model,
