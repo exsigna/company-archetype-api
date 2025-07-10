@@ -21,11 +21,11 @@ pandas==2.1.3
 numpy==1.24.4
 
 # AI/ML libraries
-# PRIMARY: Anthropic Claude API
-anthropic>=0.8.0
+# PRIMARY: OpenAI API - using modern version with proper imports
+openai>=1.3.3,<2.0.0
 
-# FALLBACK: OpenAI API - using older stable version to avoid proxy issues
-openai==0.28.1
+# FALLBACK: Anthropic Claude API
+anthropic>=0.8.0,<1.0.0
 
 # Database support
 sqlalchemy==2.0.23
@@ -42,6 +42,9 @@ python-dotenv==1.0.0
 
 # JSON handling
 jsonschema==4.19.2
+
+# HTTP client for API calls
+httpx>=0.24.0
 
 # Additional dependencies for full functionality
 setuptools==69.0.3
