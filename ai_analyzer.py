@@ -295,10 +295,10 @@ class CompleteAIAnalyzer:
                 )
                 logger.info("✅ Anthropic client created")
                 
-                # Test connection with minimal call
+                # Test connection with minimal call using CORRECT model name
                 logger.info("🧪 Testing Anthropic connection...")
                 test_response = self.anthropic_client.messages.create(
-                    model="claude-3-sonnet-20240229",
+                    model="claude-3-5-sonnet-20241022",
                     max_tokens=5,
                     messages=[{"role": "user", "content": "Hi"}]
                 )
@@ -323,6 +323,20 @@ class CompleteAIAnalyzer:
                     logger.warning("💡 Anthropic API access forbidden")
                 elif "rate_limit" in error_msg.lower():
                     logger.warning("💡 Anthropic rate limit exceeded")
+                elif "404" in error_msg or "not_found" in error_msg.lower():
+                    logger.warning("💡 Anthropic model not found - trying fallback model")
+                    # Try with a different model
+                    try:
+                        test_response = self.anthropic_client.messages.create(
+                            model="claude-3-sonnet-20240229",
+                            max_tokens=5,
+                            messages=[{"role": "user", "content": "Hi"}]
+                        )
+                        logger.info("✅ Anthropic connection successful with fallback model!")
+                        return True
+                    except:
+                        logger.warning("⚠️ Fallback model also failed")
+                        return False
                 else:
                     logger.warning(f"💡 Anthropic error type: {type(e).__name__}")
                 
@@ -375,16 +389,27 @@ class CompleteAIAnalyzer:
                 import anthropic
                 client = anthropic.Anthropic(api_key=anthropic_key, timeout=10.0)
                 
-                response = client.messages.create(
-                    model="claude-3-sonnet-20240229",
-                    max_tokens=10,
-                    messages=[{"role": "user", "content": "Say 'Anthropic test successful'"}]
-                )
+                # Try modern model first
+                try:
+                    response = client.messages.create(
+                        model="claude-3-5-sonnet-20241022",
+                        max_tokens=10,
+                        messages=[{"role": "user", "content": "Say 'Anthropic test successful'"}]
+                    )
+                    model_used = "claude-3-5-sonnet-20241022"
+                except:
+                    # Fallback to older model
+                    response = client.messages.create(
+                        model="claude-3-sonnet-20240229",
+                        max_tokens=10,
+                        messages=[{"role": "user", "content": "Say 'Anthropic test successful'"}]
+                    )
+                    model_used = "claude-3-sonnet-20240229"
                 
                 results["anthropic"] = {
                     "status": "SUCCESS",
                     "response": response.content[0].text,
-                    "model": "claude-3-sonnet-20240229"
+                    "model": model_used
                 }
                 
             except Exception as e:
@@ -541,55 +566,65 @@ class CompleteAIAnalyzer:
         timeout_manager = TimeoutManager(15.0)
         timeout_manager.start()
         
-        for attempt in range(self.max_retries):
-            try:
-                # Check timeout before each attempt
-                timeout_manager.check_timeout()
-                
-                logger.info(f"🔄 Anthropic attempt {attempt + 1}")
-                
-                prompt = self._create_complete_anthropic_prompt(content, company_name, analysis_context)
-                
-                # Use remaining time for API timeout
-                api_timeout = min(timeout_manager.remaining_time(), 12.0)
-                
-                response = self.anthropic_client.messages.create(
-                    model="claude-3-sonnet-20240229",
-                    max_tokens=self.max_output_tokens,
-                    temperature=0.1,
-                    messages=[{"role": "user", "content": prompt}],
-                    timeout=api_timeout
-                )
-                
-                response_text = response.content[0].text
-                logger.info(f"✅ Anthropic response: {len(response_text)} chars")
-                
-                analysis = self._parse_json_response(response_text)
-                if analysis:
-                    return self._create_complete_report(analysis, company_name, company_number, "claude-3-sonnet", "anthropic")
-                else:
-                    logger.warning("⚠️ Failed to parse Anthropic JSON response")
-            
-            except TimeoutError as e:
-                logger.error(f"❌ Anthropic timeout: {e}")
-                return None
-            
-            except Exception as e:
-                error_msg = str(e)
-                logger.warning(f"⚠️ Anthropic attempt {attempt + 1} failed: {error_msg}")
-                
-                if attempt < self.max_retries - 1:
-                    # Check if we have time for retry
-                    if timeout_manager.remaining_time() > 2:
-                        retry_delay = min(self.base_retry_delay, timeout_manager.remaining_time() / 2)
-                        logger.info(f"⏰ Retrying in {retry_delay:.1f}s...")
-                        time.sleep(retry_delay)
-                        continue
+        # Try modern model first, then fallback
+        models = ["claude-3-5-sonnet-20241022", "claude-3-sonnet-20240229"]
+        
+        for model in models:
+            for attempt in range(self.max_retries):
+                try:
+                    # Check timeout before each attempt
+                    timeout_manager.check_timeout()
+                    
+                    logger.info(f"🔄 Anthropic: {model}, attempt {attempt + 1}")
+                    
+                    prompt = self._create_complete_anthropic_prompt(content, company_name, analysis_context)
+                    
+                    # Use remaining time for API timeout
+                    api_timeout = min(timeout_manager.remaining_time(), 12.0)
+                    
+                    response = self.anthropic_client.messages.create(
+                        model=model,
+                        max_tokens=self.max_output_tokens,
+                        temperature=0.1,
+                        messages=[{"role": "user", "content": prompt}],
+                        timeout=api_timeout
+                    )
+                    
+                    response_text = response.content[0].text
+                    logger.info(f"✅ Anthropic response: {len(response_text)} chars")
+                    
+                    analysis = self._parse_json_response(response_text)
+                    if analysis:
+                        return self._create_complete_report(analysis, company_name, company_number, model, "anthropic")
                     else:
-                        logger.warning("⚠️ Not enough time remaining for retry")
-                        return None
-                else:
-                    logger.error(f"❌ Max retries reached: {error_msg}")
+                        logger.warning("⚠️ Failed to parse Anthropic JSON response")
+                
+                except TimeoutError as e:
+                    logger.error(f"❌ Anthropic timeout: {e}")
+                    return None
+                
+                except Exception as e:
+                    error_msg = str(e)
+                    logger.warning(f"⚠️ Anthropic {model} attempt {attempt + 1} failed: {error_msg}")
+                    
+                    # If 404 error, try next model immediately
+                    if "404" in error_msg or "not_found" in error_msg.lower():
+                        logger.info(f"🔄 Model {model} not found, trying next model...")
+                        break
+                    
+                    if attempt < self.max_retries - 1:
+                        # Check if we have time for retry
+                        if timeout_manager.remaining_time() > 2:
+                            retry_delay = min(self.base_retry_delay, timeout_manager.remaining_time() / 2)
+                            logger.info(f"⏰ Retrying in {retry_delay:.1f}s...")
+                            time.sleep(retry_delay)
+                            continue
+                        else:
+                            logger.warning("⚠️ Not enough time remaining for retry")
+                            return None
+                    else:
+                        logger.error(f"❌ Max retries reached for {model}")
+                        break
         
         logger.error("❌ All Anthropic attempts failed")
         return None
