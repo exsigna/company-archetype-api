@@ -1507,47 +1507,77 @@ def filter_files_by_years(downloaded_files, selected_years):
     
     return filtered_files
 
-def extract_content_from_files(file_list):
-    """Extract content from PDF files using parallel processing if available"""
-    if not file_list:
+def extract_content_from_files(downloaded_files):
+    """Extract content from downloaded files using parallel processing when beneficial"""
+    try:
+        logger.info(f"📄 Starting content extraction from {len(downloaded_files)} files")
+        
+        # Use parallel extraction for multiple files, sequential for single files
+        if len(downloaded_files) > 1 and parallel_pdf_extractor:
+            logger.info(f"🚀 Using parallel extraction for {len(downloaded_files)} files")
+            extracted_content = extract_multiple_files_parallel(downloaded_files)
+        else:
+            logger.info("📄 Using sequential extraction")
+            extracted_content = extract_content_from_files_legacy(downloaded_files)
+        
+        # Filter out None results and log statistics
+        valid_content = [content for content in extracted_content if content is not None]
+        
+        logger.info(f"✅ Content extraction completed: {len(valid_content)}/{len(downloaded_files)} files successful")
+        
+        if len(valid_content) != len(downloaded_files):
+            failed_count = len(downloaded_files) - len(valid_content)
+            logger.warning(f"⚠️ {failed_count} files failed extraction")
+        
+        return valid_content
+        
+    except Exception as e:
+        logger.error(f"❌ Error in content extraction: {e}")
+        return []
+
+def extract_content_from_files_legacy(downloaded_files):
+    """Legacy sequential extraction method - kept for fallback"""
+    if not pdf_extractor:
+        logger.error("PDF extractor not available")
         return []
     
-    try:
-        # Use parallel extractor if available and multiple files
-        if parallel_pdf_extractor and len(file_list) > 1:
-            logger.info(f"Using parallel PDF extraction for {len(file_list)} files")
-            return parallel_pdf_extractor.extract_multiple_files(file_list)
-        
-        # Fallback to single-file extractor
-        elif pdf_extractor:
-            logger.info(f"Using single-file PDF extraction for {len(file_list)} files")
-            extracted_content = []
-            for file_info in file_list:
-                try:
-                    content = pdf_extractor.extract_text(file_info['filepath'])
-                    if content:
-                        extracted_content.append({
-                            'content': content,
-                            'filepath': file_info['filepath'],
-                            'year': file_info.get('year'),
-                            'metadata': {
-                                'extraction_method': 'single_file',
-                                'file_size': file_info.get('size', 0)
-                            }
-                        })
-                except Exception as file_error:
-                    logger.warning(f"Failed to extract from {file_info['filepath']}: {file_error}")
-                    continue
+    extracted_content = []
+    
+    for file_info in downloaded_files:
+        try:
+            logger.info(f"📄 Extracting content from: {file_info['filename']}")
             
-            return extracted_content
-        
-        else:
-            logger.error("No PDF extractor available")
-            return []
+            # Read PDF content
+            with open(file_info['path'], 'rb') as f:
+                pdf_content = f.read()
             
-    except Exception as e:
-        logger.error(f"Error extracting content from files: {e}")
-        return []
+            # Extract using PDFExtractor
+            extraction_result = pdf_extractor.extract_text_from_pdf(
+                pdf_content, file_info['filename']
+            )
+            
+            if extraction_result["extraction_status"] == "success":
+                content = extraction_result.get("raw_text", "")
+                if content and len(content.strip()) > 100:
+                    extracted_content.append({
+                        'filename': file_info['filename'],
+                        'date': file_info['date'],
+                        'content': content,
+                        'metadata': {
+                            'file_size': file_info['size'],
+                            'extraction_method': extraction_result["extraction_method"]
+                        }
+                    })
+                    logger.info(f"✅ Successfully extracted {len(content):,} characters from {file_info['filename']}")
+                else:
+                    logger.warning(f"⚠️ Insufficient content extracted from {file_info['filename']}")
+            else:
+                logger.error(f"❌ Extraction failed for {file_info['filename']}")
+                
+        except Exception as e:
+            logger.error(f"❌ Error extracting content from {file_info['filename']}: {e}")
+    
+    return extracted_content
 
 def process_and_analyze_content_for_board(extracted_content, company_name, company_number, analysis_context):
     """Process and analyze content for board-grade strategic analysis"""
