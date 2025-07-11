@@ -1586,20 +1586,38 @@ def process_and_analyze_content_for_board(extracted_content, company_name, compa
         return None
     
     try:
-        # Process content using content processor
+        # Process content using content processor - FIXED to use available methods
         logger.info("Processing content for board analysis...")
-        processed_content = content_processor.process_multiple_files(extracted_content)
         
-        if not processed_content:
-            logger.error("Content processing failed")
-            return None
+        # Combine all extracted content into a single text for processing
+        combined_content = ""
+        processed_files = []
         
-        # Perform board-grade AI analysis
+        for i, content_data in enumerate(extracted_content):
+            logger.info(f"📋 Processing document {i+1}: {content_data.get('filename', 'unknown')}")
+            
+            # Add content to combined text
+            file_content = content_data.get('content', '')
+            combined_content += f"\n\n=== FILE: {content_data.get('filename', 'unknown')} ===\n"
+            combined_content += file_content
+            
+            # Track processed file info
+            processed_files.append({
+                'filename': content_data.get('filename', 'unknown'),
+                'content_length': len(file_content),
+                'date': content_data.get('date', ''),
+                'metadata': content_data.get('metadata', {})
+            })
+        
+        logger.info(f"✅ Combined content preparation completed: {len(combined_content):,} characters from {len(extracted_content)} files")
+        
+        # Perform board-grade AI analysis using the archetype analyzer
         logger.info("Performing board-grade AI analysis...")
-        board_analysis = archetype_analyzer.analyze_for_board_presentation(
-            processed_content, 
+        board_analysis = archetype_analyzer.analyze_for_board_optimized(
+            combined_content, 
             company_name, 
             company_number,
+            extracted_content,
             analysis_context
         )
         
@@ -1607,13 +1625,21 @@ def process_and_analyze_content_for_board(extracted_content, company_name, compa
             logger.error("Board-grade analysis failed")
             return None
         
+        logger.info("✅ Board-grade archetype analysis completed")
+        
         return {
             'board_analysis': board_analysis,
-            'processed_content': processed_content
+            'processed_content': {
+                'combined_length': len(combined_content),
+                'files_processed': processed_files,
+                'total_files': len(extracted_content)
+            }
         }
         
     except Exception as e:
         logger.error(f"Error in board content analysis: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return None
 
 # Create the Flask application instance
