@@ -4,6 +4,7 @@ Complete AI Analyzer with Exact Business and Risk Strategy Archetypes
 Generates reports in the specified format with proper SWOT analysis
 Thread-safe for Render deployment with enhanced debugging
 FIXED: Confidence level calculation based on analysis scope only
+ENHANCED: Better confidence debugging and calculation tracking
 """
 
 import os
@@ -57,6 +58,7 @@ class TimeoutManager:
 class CompleteAIAnalyzer:
     """
     Complete AI Analyzer with exact archetypes and report format
+    FIXED: Proper confidence level calculation and debugging
     """
     
     def __init__(self):
@@ -75,10 +77,10 @@ class CompleteAIAnalyzer:
         self.primary_model = "gpt-4-turbo"
         self.fallback_model = "gpt-4-turbo-2024-04-09"
         self.max_output_tokens = 4096
-        self.max_retries = 3  # Increased from 2 to 3
-        self.base_retry_delay = 3.0  # Increased to 3s between retries
+        self.max_retries = 3
+        self.base_retry_delay = 3.0
         self.max_content_chars = 150000
-        self.request_timeout = 60  # Increased base timeout
+        self.request_timeout = 60
         
         # Complete Business Strategy Archetypes
         self.business_archetypes = {
@@ -139,14 +141,6 @@ class CompleteAIAnalyzer:
             logger.info(f"   📏 Length: {len(openai_key)} characters")
             logger.info(f"   🔑 Prefix: {openai_key[:15]}...")
             logger.info(f"   📝 Format check: {'✅ Valid sk-proj format' if openai_key.startswith('sk-proj-') else '⚠️ Unexpected format'}")
-            
-            # Check for common issues
-            if ' ' in openai_key:
-                logger.warning(f"   ⚠️ Key contains spaces!")
-            if '\n' in openai_key or '\r' in openai_key:
-                logger.warning(f"   ⚠️ Key contains newlines!")
-            if len(openai_key) < 50:
-                logger.warning(f"   ⚠️ Key seems too short!")
         else:
             logger.error("   ❌ OPENAI_API_KEY not found!")
         
@@ -156,31 +150,8 @@ class CompleteAIAnalyzer:
             logger.info(f"   📏 Length: {len(anthropic_key)} characters")
             logger.info(f"   🔑 Prefix: {anthropic_key[:15]}...")
             logger.info(f"   📝 Format check: {'✅ Valid sk-ant format' if anthropic_key.startswith('sk-ant-') else '⚠️ Unexpected format'}")
-            
-            # Check for common issues
-            if ' ' in anthropic_key:
-                logger.warning(f"   ⚠️ Key contains spaces!")
-            if '\n' in anthropic_key or '\r' in anthropic_key:
-                logger.warning(f"   ⚠️ Key contains newlines!")
-            if len(anthropic_key) < 50:
-                logger.warning(f"   ⚠️ Key seems too short!")
         else:
             logger.info("   ℹ️ ANTHROPIC_API_KEY not found (fallback only)")
-        
-        # Environment info
-        logger.info(f"   🌍 Platform: {sys.platform}")
-        logger.info(f"   🐍 Python: {sys.version}")
-        logger.info(f"   📦 Working directory: {os.getcwd()}")
-        
-        # Check for Render-specific variables
-        render_vars = {
-            'RENDER': os.environ.get('RENDER'),
-            'RENDER_SERVICE_ID': os.environ.get('RENDER_SERVICE_ID'),
-            'RENDER_SERVICE_NAME': os.environ.get('RENDER_SERVICE_NAME'),
-        }
-        for key, value in render_vars.items():
-            if value:
-                logger.info(f"   🏗️ {key}: {value}")
     
     def _initialize_clients(self):
         """Initialize AI clients with enhanced error handling"""
@@ -220,56 +191,30 @@ class CompleteAIAnalyzer:
                 logger.warning("⚠️ OPENAI_API_KEY not found")
                 return False
             
-            logger.info("🔧 Attempting OpenAI client initialization...")
-            
             try:
                 import openai
-                logger.info(f"📦 openai version: {openai.__version__}")
                 from openai import OpenAI
-                logger.info(f"✅ OpenAI library imported successfully")
                 
                 # Create client with explicit timeout
                 self.openai_client = OpenAI(
                     api_key=api_key,
                     max_retries=0,
-                    timeout=30.0  # Increased timeout for initial test
+                    timeout=30.0
                 )
-                logger.info("✅ OpenAI client created")
                 
                 # Test connection with simple call
-                logger.info("🧪 Testing OpenAI connection...")
                 test_response = self.openai_client.models.list()
                 models = [model.id for model in test_response.data]
-                gpt4_models = [m for m in models if 'gpt-4' in m]
                 
-                logger.info(f"✅ OpenAI connection successful!")
-                logger.info(f"📊 Available models: {len(models)}")
-                logger.info(f"🧠 GPT-4 models: {len(gpt4_models)}")
-                logger.info(f"🎯 Primary model available: {'✅' if self.primary_model in models else '❌'}")
-                
+                logger.info(f"✅ OpenAI connection successful! Available models: {len(models)}")
                 return True
                 
             except ImportError as e:
                 logger.error(f"❌ OpenAI library import failed: {e}")
-                logger.error("💡 Solution: Add 'openai>=1.0.0' to requirements.txt")
                 return False
                 
             except Exception as e:
-                error_msg = str(e)
-                logger.error(f"❌ OpenAI client test failed: {error_msg}")
-                
-                # Provide specific error guidance
-                if "401" in error_msg or "unauthorized" in error_msg.lower():
-                    logger.error("💡 API key authentication failed - check key validity")
-                elif "403" in error_msg or "forbidden" in error_msg.lower():
-                    logger.error("💡 API access forbidden - check account status")
-                elif "timeout" in error_msg.lower():
-                    logger.error("💡 Connection timeout - network issue")
-                elif "connection" in error_msg.lower():
-                    logger.error("💡 Connection failed - check network/firewall")
-                else:
-                    logger.error(f"💡 Unexpected error type: {type(e).__name__}")
-                
+                logger.error(f"❌ OpenAI client test failed: {str(e)}")
                 return False
                 
         except Exception as e:
@@ -285,21 +230,16 @@ class CompleteAIAnalyzer:
                 logger.info("ℹ️ ANTHROPIC_API_KEY not found - skipping")
                 return False
             
-            logger.info("🔧 Attempting Anthropic client initialization...")
-            
             try:
                 import anthropic
-                logger.info("✅ Anthropic library imported successfully")
                 
                 # Create client
                 self.anthropic_client = anthropic.Anthropic(
                     api_key=api_key, 
                     timeout=30.0
                 )
-                logger.info("✅ Anthropic client created")
                 
-                # Test connection with minimal call using CORRECT model name
-                logger.info("🧪 Testing Anthropic connection...")
+                # Test connection with minimal call
                 test_response = self.anthropic_client.messages.create(
                     model="claude-3-5-sonnet-20241022",
                     max_tokens=5,
@@ -307,130 +247,26 @@ class CompleteAIAnalyzer:
                 )
                 
                 logger.info("✅ Anthropic connection successful!")
-                logger.info(f"📝 Test response: {test_response.content[0].text}")
                 return True
                 
             except ImportError as e:
                 logger.info(f"ℹ️ Anthropic library not available: {e}")
-                logger.info("💡 Solution: Add 'anthropic>=0.8.0' to requirements.txt")
                 return False
                 
             except Exception as e:
-                error_msg = str(e)
-                logger.warning(f"⚠️ Anthropic client test failed: {error_msg}")
-                
-                # Provide specific error guidance
-                if "401" in error_msg or "authentication_error" in error_msg:
-                    logger.warning("💡 Anthropic API key authentication failed")
-                elif "403" in error_msg or "forbidden" in error_msg.lower():
-                    logger.warning("💡 Anthropic API access forbidden")
-                elif "rate_limit" in error_msg.lower():
-                    logger.warning("💡 Anthropic rate limit exceeded")
-                elif "404" in error_msg or "not_found" in error_msg.lower():
-                    logger.warning("💡 Anthropic model not found - trying fallback model")
-                    # Try with a different model
-                    try:
-                        test_response = self.anthropic_client.messages.create(
-                            model="claude-3-sonnet-20240229",
-                            max_tokens=5,
-                            messages=[{"role": "user", "content": "Hi"}]
-                        )
-                        logger.info("✅ Anthropic connection successful with fallback model!")
-                        return True
-                    except:
-                        logger.warning("⚠️ Fallback model also failed")
-                        return False
-                else:
-                    logger.warning(f"💡 Anthropic error type: {type(e).__name__}")
-                
+                logger.warning(f"⚠️ Anthropic client test failed: {str(e)}")
                 return False
                 
         except Exception as e:
             logger.warning(f"⚠️ Anthropic initialization failed: {e}")
             return False
     
-    def test_api_connections(self) -> Dict[str, Any]:
-        """Test API connections and return detailed results"""
-        results = {
-            "timestamp": datetime.now().isoformat(),
-            "openai": {"status": "not_tested"},
-            "anthropic": {"status": "not_tested"}
-        }
-        
-        # Test OpenAI
-        openai_key = os.environ.get('OPENAI_API_KEY', '').strip()
-        if openai_key:
-            try:
-                from openai import OpenAI
-                client = OpenAI(api_key=openai_key, timeout=10.0)
-                
-                response = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[{"role": "user", "content": "Say 'OpenAI test successful'"}],
-                    max_tokens=10
-                )
-                
-                results["openai"] = {
-                    "status": "SUCCESS",
-                    "response": response.choices[0].message.content,
-                    "model": "gpt-3.5-turbo"
-                }
-                
-            except Exception as e:
-                results["openai"] = {
-                    "status": "FAILED",
-                    "error": str(e),
-                    "error_type": type(e).__name__
-                }
-        else:
-            results["openai"] = {"status": "NO_KEY"}
-        
-        # Test Anthropic
-        anthropic_key = os.environ.get('ANTHROPIC_API_KEY', '').strip()
-        if anthropic_key:
-            try:
-                import anthropic
-                client = anthropic.Anthropic(api_key=anthropic_key, timeout=10.0)
-                
-                # Try modern model first
-                try:
-                    response = client.messages.create(
-                        model="claude-3-5-sonnet-20241022",
-                        max_tokens=10,
-                        messages=[{"role": "user", "content": "Say 'Anthropic test successful'"}]
-                    )
-                    model_used = "claude-3-5-sonnet-20241022"
-                except:
-                    # Fallback to older model
-                    response = client.messages.create(
-                        model="claude-3-sonnet-20240229",
-                        max_tokens=10,
-                        messages=[{"role": "user", "content": "Say 'Anthropic test successful'"}]
-                    )
-                    model_used = "claude-3-sonnet-20240229"
-                
-                results["anthropic"] = {
-                    "status": "SUCCESS",
-                    "response": response.content[0].text,
-                    "model": model_used
-                }
-                
-            except Exception as e:
-                results["anthropic"] = {
-                    "status": "FAILED",
-                    "error": str(e),
-                    "error_type": type(e).__name__
-                }
-        else:
-            results["anthropic"] = {"status": "NO_KEY"}
-        
-        return results
-    
     def analyze_for_board_optimized(self, content: str, company_name: str, company_number: str,
                                   extracted_content: Optional[List[Dict[str, Any]]] = None,
                                   analysis_context: Optional[str] = None) -> Dict[str, Any]:
         """
         Complete analysis generating full report format (thread-safe for Render)
+        FIXED: Enhanced confidence calculation debugging
         """
         start_time = time.time()
         
@@ -496,7 +332,7 @@ class CompleteAIAnalyzer:
             return None
         
         # Create timeout manager with much longer duration for large content
-        timeout_manager = TimeoutManager(90.0)  # Increased to 90s for very large content
+        timeout_manager = TimeoutManager(90.0)
         timeout_manager.start()
         
         models = [self.primary_model, self.fallback_model]
@@ -511,8 +347,8 @@ class CompleteAIAnalyzer:
                     
                     messages = self._create_complete_openai_messages(content, company_name, analysis_context)
                     
-                    # Use remaining time for API timeout, much longer for complex analysis
-                    api_timeout = min(timeout_manager.remaining_time(), 60.0)  # Increased to 60s per request
+                    # Use remaining time for API timeout
+                    api_timeout = min(timeout_manager.remaining_time(), 60.0)
                     
                     response = self.openai_client.chat.completions.create(
                         model=model,
@@ -541,7 +377,6 @@ class CompleteAIAnalyzer:
                     logger.warning(f"⚠️ OpenAI attempt {attempt + 1} failed: {error_msg}")
                     
                     if self._is_retryable_error(error_msg) and attempt < self.max_retries - 1:
-                        # Check if we have time for retry
                         if timeout_manager.remaining_time() > 3:
                             retry_delay = min(self.base_retry_delay, timeout_manager.remaining_time() / 2)
                             logger.info(f"⏰ Retrying in {retry_delay:.1f}s...")
@@ -566,7 +401,7 @@ class CompleteAIAnalyzer:
             return None
         
         # Create timeout manager with much longer duration for large content
-        timeout_manager = TimeoutManager(70.0)  # Increased to 70s for very large content
+        timeout_manager = TimeoutManager(70.0)
         timeout_manager.start()
         
         # Try modern model first, then fallback
@@ -582,8 +417,8 @@ class CompleteAIAnalyzer:
                     
                     prompt = self._create_complete_anthropic_prompt(content, company_name, analysis_context)
                     
-                    # Use remaining time for API timeout, much longer for complex analysis
-                    api_timeout = min(timeout_manager.remaining_time(), 50.0)  # Increased to 50s per request
+                    # Use remaining time for API timeout
+                    api_timeout = min(timeout_manager.remaining_time(), 50.0)
                     
                     response = self.anthropic_client.messages.create(
                         model=model,
@@ -616,7 +451,6 @@ class CompleteAIAnalyzer:
                         break
                     
                     if attempt < self.max_retries - 1:
-                        # Check if we have time for retry
                         if timeout_manager.remaining_time() > 2:
                             retry_delay = min(self.base_retry_delay, timeout_manager.remaining_time() / 2)
                             logger.info(f"⏰ Retrying in {retry_delay:.1f}s...")
@@ -779,46 +613,69 @@ COMPANY CONTENT:{context_note}
     def _determine_confidence_level(self, analysis: Dict[str, Any], extracted_content: Optional[List[Dict[str, Any]]] = None) -> tuple:
         """
         FIXED: Determine confidence level based on analysis scope and data quality
-        Should only consider the current analysis, not cumulative database assessments
+        Enhanced debugging to track exactly what's happening in the calculation
         
         Returns:
             tuple: (confidence_level, explanation)
         """
+        logger.info(f"🔍 CONFIDENCE CALCULATION START:")
+        logger.info(f"   Analysis keys: {list(analysis.keys())}")
+        logger.info(f"   Extracted content: {len(extracted_content) if extracted_content else 0} files")
+        
         # FIXED: Extract years information with better parsing
         years_analyzed = analysis.get('years_analyzed', [])
-        logger.info(f"🔍 CONFIDENCE: Raw years_analyzed = {years_analyzed} (type: {type(years_analyzed)})")
+        logger.info(f"   Raw years_analyzed = {years_analyzed} (type: {type(years_analyzed)})")
         
+        # Enhanced year parsing
+        parsed_years = []
         if isinstance(years_analyzed, str):
             try:
-                # Handle JSON string format like "[2020, 2021, 2022, 2023, 2024]"
+                # Handle various string formats
                 import re
-                year_matches = re.findall(r'\d{4}', years_analyzed)
-                years_analyzed = [int(year) for year in year_matches]
-                logger.info(f"🔍 CONFIDENCE: Parsed years from string: {years_analyzed}")
-            except:
-                years_analyzed = []
-                logger.warning("🔍 CONFIDENCE: Could not parse years from string")
+                year_matches = re.findall(r'\b(20\d{2})\b', years_analyzed)
+                parsed_years = [int(year) for year in year_matches]
+                logger.info(f"   Parsed years from string: {parsed_years}")
+            except Exception as e:
+                logger.warning(f"   Could not parse years from string: {e}")
+                parsed_years = []
+        elif isinstance(years_analyzed, list):
+            # Handle list of years (could be strings or integers)
+            for item in years_analyzed:
+                try:
+                    if isinstance(item, (int, float)):
+                        year = int(item)
+                    elif isinstance(item, str):
+                        year = int(item.strip())
+                    else:
+                        continue
+                    
+                    # Validate year is reasonable (2000-2030)
+                    if 2000 <= year <= 2030:
+                        parsed_years.append(year)
+                except:
+                    continue
+            logger.info(f"   Parsed years from list: {parsed_years}")
+        else:
+            logger.warning(f"   Unexpected years_analyzed type: {type(years_analyzed)}")
+            parsed_years = []
         
-        # FIXED: Ensure years_analyzed is a list and calculate properly
-        if not isinstance(years_analyzed, list):
-            years_analyzed = []
-            logger.warning(f"🔍 CONFIDENCE: years_analyzed is not a list, type: {type(years_analyzed)}")
+        # Remove duplicates and sort
+        parsed_years = sorted(list(set(parsed_years)))
+        years_count = len(parsed_years)
+        files_processed = len(extracted_content) if extracted_content else 0
         
-        years_count = len(years_analyzed) if isinstance(years_analyzed, list) else 0
-        files_processed = len(extracted_content) if extracted_content else years_count
+        logger.info(f"   CONFIDENCE INPUTS:")
+        logger.info(f"   - Final parsed years: {parsed_years}")
+        logger.info(f"   - Years count: {years_count}")
+        logger.info(f"   - Files processed: {files_processed}")
         
-        logger.info(f"🔍 CONFIDENCE CALCULATION:")
-        logger.info(f"   Years analyzed: {years_analyzed}")
-        logger.info(f"   Years count: {years_count}")
-        logger.info(f"   Files processed: {files_processed}")
-        
-        # Calculate years span - FIXED
+        # Calculate years span
         if years_count >= 2:
-            years_span = max(years_analyzed) - min(years_analyzed) + 1
-            logger.info(f"   Years span: {years_span} (from {min(years_analyzed)} to {max(years_analyzed)})")
+            years_span = max(parsed_years) - min(parsed_years) + 1
+            logger.info(f"   - Years span: {years_span} (from {min(parsed_years)} to {max(parsed_years)})")
         else:
             years_span = years_count
-            logger.info(f"   Years span: {years_span} (single year or no years)")
+            logger.info(f"   - Years span: {years_span} (single year or no years)")
         
         # Check content quality indicators
         business_strategy = analysis.get('business_strategy', {})
@@ -827,14 +684,14 @@ COMPANY CONTENT:{context_note}
         business_reasoning_length = len(str(business_strategy.get('dominant_rationale', business_strategy.get('dominant_reasoning', ''))))
         risk_reasoning_length = len(str(risk_strategy.get('dominant_rationale', risk_strategy.get('dominant_reasoning', ''))))
         
-        logger.info(f"   Business reasoning length: {business_reasoning_length}")
-        logger.info(f"   Risk reasoning length: {risk_reasoning_length}")
+        logger.info(f"   - Business reasoning length: {business_reasoning_length}")
+        logger.info(f"   - Risk reasoning length: {risk_reasoning_length}")
         
         # FIXED: Confidence scoring based on data scope and quality
         confidence_score = 0
         score_breakdown = []
         
-        # Years coverage scoring (40 points max) - FIXED thresholds
+        # Years coverage scoring (40 points max)
         if years_count >= 5:
             confidence_score += 40
             score_breakdown.append(f"+40 pts: {years_count} years analyzed (excellent coverage)")
@@ -851,7 +708,7 @@ COMPANY CONTENT:{context_note}
             confidence_score += 5
             score_breakdown.append(f"+5 pts: {years_count} year(s) analyzed (limited coverage)")
         
-        # Years span scoring (25 points max) - FIXED thresholds  
+        # Years span scoring (25 points max)
         if years_span >= 5:
             confidence_score += 25
             score_breakdown.append(f"+25 pts: {years_span}-year timespan (excellent longitudinal view)")
@@ -868,7 +725,7 @@ COMPANY CONTENT:{context_note}
             confidence_score += 2
             score_breakdown.append(f"+2 pts: {years_span}-year timespan (snapshot view)")
         
-        # Files processed scoring (20 points max) - FIXED thresholds
+        # Files processed scoring (20 points max)
         if files_processed >= 5:
             confidence_score += 20
             score_breakdown.append(f"+20 pts: {files_processed} files processed (comprehensive documentation)")
@@ -885,22 +742,22 @@ COMPANY CONTENT:{context_note}
             confidence_score += 4
             score_breakdown.append(f"+4 pts: {files_processed} file(s) processed (limited documentation)")
         
-        # Content quality scoring (15 points max) - FIXED thresholds
+        # Content quality scoring (15 points max)
         if business_reasoning_length >= 200 and risk_reasoning_length >= 200:
             confidence_score += 15
             score_breakdown.append(f"+15 pts: comprehensive reasoning (business: {business_reasoning_length}, risk: {risk_reasoning_length} chars)")
         elif business_reasoning_length >= 150 and risk_reasoning_length >= 150:
             confidence_score += 12
-            score_breakdown.append(f"+12 pts: good reasoning quality (business: {business_reasoning_length}, risk: {risk_reasoning_length} chars)")
+            score_breakdown.append(f"+12 pts: good reasoning quality")
         elif business_reasoning_length >= 100 and risk_reasoning_length >= 100:
             confidence_score += 8
-            score_breakdown.append(f"+8 pts: adequate reasoning (business: {business_reasoning_length}, risk: {risk_reasoning_length} chars)")
+            score_breakdown.append(f"+8 pts: adequate reasoning")
         else:
             confidence_score += 3
-            score_breakdown.append(f"+3 pts: basic reasoning (business: {business_reasoning_length}, risk: {risk_reasoning_length} chars)")
+            score_breakdown.append(f"+3 pts: basic reasoning")
         
         # FIXED: Determine final confidence level with correct thresholds
-        if confidence_score >= 80:  # FIXED: Back to 80 for HIGH confidence
+        if confidence_score >= 80:
             confidence_level = "high"
             explanation = f"High confidence ({confidence_score}/100 points) - Excellent analysis scope with comprehensive data coverage"
         elif confidence_score >= 60:
@@ -913,17 +770,39 @@ COMPANY CONTENT:{context_note}
         # Create detailed explanation
         detailed_explanation = f"{explanation}. Scoring breakdown: {'; '.join(score_breakdown[:3])}{'...' if len(score_breakdown) > 3 else ''}."
         
-        logger.info(f"🎯 CONFIDENCE RESULT:")
+        logger.info(f"🎯 CONFIDENCE CALCULATION RESULT:")
         logger.info(f"   Total score: {confidence_score}/100")
         logger.info(f"   Confidence level: {confidence_level}")
         logger.info(f"   Explanation: {detailed_explanation}")
+        logger.info(f"   Score breakdown: {score_breakdown}")
+        
+        # VALIDATION CHECK
+        expected_confidence = "low"
+        if years_count >= 5 and files_processed >= 5:
+            expected_confidence = "high"
+        elif years_count >= 3 and files_processed >= 3:
+            expected_confidence = "medium"
+        
+        if confidence_level != expected_confidence:
+            logger.warning(f"❌ CONFIDENCE VALIDATION WARNING:")
+            logger.warning(f"   Calculated: {confidence_level}")
+            logger.warning(f"   Expected: {expected_confidence}")
+            logger.warning(f"   This may indicate an issue with the scoring thresholds")
+        else:
+            logger.info(f"✅ CONFIDENCE VALIDATION PASSED: {confidence_level}")
         
         return confidence_level, detailed_explanation
     
     def _create_complete_report(self, analysis: Dict[str, Any], company_name: str,
                               company_number: str, model: str, service: str, 
                               extracted_content: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
-        """Create complete report in the specified format with proper confidence assessment"""
+        """
+        Create complete report in the specified format with FIXED confidence assessment
+        """
+        logger.info(f"🎯 CREATING COMPLETE REPORT:")
+        logger.info(f"   Company: {company_name} ({company_number})")
+        logger.info(f"   Analysis keys: {list(analysis.keys())}")
+        logger.info(f"   Extracted content files: {len(extracted_content) if extracted_content else 0}")
         
         # Extract data with fallbacks
         business = analysis.get('business_strategy', {})
@@ -933,11 +812,12 @@ COMPANY CONTENT:{context_note}
         # **FIXED: Calculate confidence based on current analysis scope only**
         confidence_level, confidence_explanation = self._determine_confidence_level(analysis, extracted_content)
         
-        logger.info(f"🎯 Confidence assessment for {company_name}:")
-        logger.info(f"   Years analyzed: {analysis.get('years_analyzed', 'unknown')}")
-        logger.info(f"   Files processed: {len(extracted_content) if extracted_content else 'unknown'}")
-        logger.info(f"   Calculated confidence: {confidence_level}")
-        logger.info(f"   Explanation: {confidence_explanation}")
+        # ENHANCED DEBUG LOGGING FOR CONFIDENCE IN REPORT CREATION
+        logger.info(f"🎯 REPORT CREATION CONFIDENCE DEBUG:")
+        logger.info(f"   Years from analysis: {analysis.get('years_analyzed', 'MISSING')}")
+        logger.info(f"   Files from extracted_content: {len(extracted_content) if extracted_content else 0}")
+        logger.info(f"   Final calculated confidence: {confidence_level}")
+        logger.info(f"   Confidence explanation: {confidence_explanation}")
         
         return {
             'success': True,
@@ -1070,7 +950,13 @@ COMPANY CONTENT:{context_note}
                 'confidence_factors': {
                     'years_count': len(extracted_content) if extracted_content else 0,
                     'files_processed': len(extracted_content) if extracted_content else 0,
-                    'reasoning_quality': 'assessed'
+                    'reasoning_quality': 'assessed',
+                    'confidence_calculation_debug': {
+                        'input_years': analysis.get('years_analyzed'),
+                        'files_count': len(extracted_content) if extracted_content else 0,
+                        'calculated_level': confidence_level,
+                        'calculation_timestamp': datetime.now().isoformat()
+                    }
                 }
             }
         }
