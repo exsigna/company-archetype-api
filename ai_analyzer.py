@@ -3,6 +3,7 @@
 Complete AI Analyzer with Exact Business and Risk Strategy Archetypes
 Generates reports in the specified format with proper SWOT analysis
 Thread-safe for Render deployment with enhanced debugging
+UPDATED: Fixed confidence level calculation based on analysis scope only
 """
 
 import os
@@ -448,7 +449,7 @@ class CompleteAIAnalyzer:
             # Try OpenAI analysis first if available
             if self.openai_client and self.client_type == "openai_primary":
                 logger.info("🎯 Attempting OpenAI analysis (primary)...")
-                result = self._analyze_with_openai(optimized_content, company_name, company_number, analysis_context)
+                result = self._analyze_with_openai(optimized_content, company_name, company_number, analysis_context, extracted_content)
                 if result:
                     analysis_time = time.time() - start_time
                     logger.info(f"✅ OpenAI analysis completed in {analysis_time:.2f}s")
@@ -459,7 +460,7 @@ class CompleteAIAnalyzer:
             # Try Anthropic analysis
             if self.anthropic_client:
                 logger.info("🎯 Attempting Anthropic analysis...")
-                result = self._analyze_with_anthropic(optimized_content, company_name, company_number, analysis_context)
+                result = self._analyze_with_anthropic(optimized_content, company_name, company_number, analysis_context, extracted_content)
                 if result:
                     analysis_time = time.time() - start_time
                     logger.info(f"✅ Anthropic analysis completed in {analysis_time:.2f}s")
@@ -470,7 +471,7 @@ class CompleteAIAnalyzer:
             # If OpenAI was set as fallback but primary failed, try it now
             if self.openai_client and self.client_type == "anthropic_fallback":
                 logger.info("🎯 Attempting OpenAI analysis (fallback)...")
-                result = self._analyze_with_openai(optimized_content, company_name, company_number, analysis_context)
+                result = self._analyze_with_openai(optimized_content, company_name, company_number, analysis_context, extracted_content)
                 if result:
                     analysis_time = time.time() - start_time
                     logger.info(f"✅ OpenAI fallback analysis completed in {analysis_time:.2f}s")
@@ -487,7 +488,7 @@ class CompleteAIAnalyzer:
             return self._create_emergency_analysis(company_name, company_number, str(e))
     
     def _analyze_with_openai(self, content: str, company_name: str, company_number: str,
-                           analysis_context: Optional[str]) -> Optional[Dict[str, Any]]:
+                           analysis_context: Optional[str], extracted_content: Optional[List[Dict[str, Any]]] = None) -> Optional[Dict[str, Any]]:
         """Analyze using OpenAI with thread-safe timeout"""
         
         if not self.openai_client:
@@ -527,7 +528,7 @@ class CompleteAIAnalyzer:
                     
                     analysis = self._parse_json_response(response_text)
                     if analysis:
-                        return self._create_complete_report(analysis, company_name, company_number, model, "openai")
+                        return self._create_complete_report(analysis, company_name, company_number, model, "openai", extracted_content)
                     else:
                         logger.warning("⚠️ Failed to parse OpenAI JSON response")
                 
@@ -557,7 +558,7 @@ class CompleteAIAnalyzer:
         return None
     
     def _analyze_with_anthropic(self, content: str, company_name: str, company_number: str,
-                              analysis_context: Optional[str]) -> Optional[Dict[str, Any]]:
+                              analysis_context: Optional[str], extracted_content: Optional[List[Dict[str, Any]]] = None) -> Optional[Dict[str, Any]]:
         """Analyze using Anthropic with thread-safe timeout"""
         
         if not self.anthropic_client:
@@ -597,7 +598,7 @@ class CompleteAIAnalyzer:
                     
                     analysis = self._parse_json_response(response_text)
                     if analysis:
-                        return self._create_complete_report(analysis, company_name, company_number, model, "anthropic")
+                        return self._create_complete_report(analysis, company_name, company_number, model, "anthropic", extracted_content)
                     else:
                         logger.warning("⚠️ Failed to parse Anthropic JSON response")
                 
@@ -675,7 +676,7 @@ Analyze the company and respond with VALID JSON ONLY using this EXACT structure:
     "threats": ["threat1", "threat2", "threat3", "threat4"]
   }},
   "years_analyzed": "[period covered by the analysis]",
-  "confidence_level": "high"
+  "confidence_level": "[will be determined by system based on analysis scope]"
 }}
 
 BUSINESS STRATEGY ARCHETYPES:
@@ -688,7 +689,8 @@ IMPORTANT:
 - Use EXACT archetype names from the lists above
 - Provide specific evidence from the company content
 - SWOT should reflect the combination of the 4 selected archetypes
-- Focus on how the archetype combination creates specific advantages/disadvantages"""
+- Focus on how the archetype combination creates specific advantages/disadvantages
+- The confidence_level will be calculated by the system based on data scope"""
 
         user_prompt = f"""Analyze {company_name} and provide comprehensive strategic archetype analysis.
 
@@ -735,7 +737,7 @@ Respond with valid JSON using the exact structure specified."""
     "threats": ["threat1", "threat2", "threat3", "threat4"]
   }},
   "years_analyzed": "[period]",
-  "confidence_level": "high"
+  "confidence_level": "[will be determined by system based on analysis scope]"
 }}
 
 BUSINESS STRATEGY ARCHETYPES:
@@ -743,6 +745,8 @@ BUSINESS STRATEGY ARCHETYPES:
 
 RISK STRATEGY ARCHETYPES:
 {risk_list}
+
+The confidence_level will be calculated by the system based on data scope and quality.
 
 COMPANY CONTENT:{context_note}
 {content}"""
@@ -772,21 +776,151 @@ COMPANY CONTENT:{context_note}
         logger.error("❌ JSON parsing failed")
         return None
     
+    def _determine_confidence_level(self, analysis: Dict[str, Any], extracted_content: Optional[List[Dict[str, Any]]] = None) -> tuple:
+        """
+        FIXED: Determine confidence level based on analysis scope and data quality
+        Should only consider the current analysis, not cumulative database assessments
+        
+        Returns:
+            tuple: (confidence_level, explanation)
+        """
+        # Extract years information
+        years_analyzed = analysis.get('years_analyzed', [])
+        if isinstance(years_analyzed, str):
+            try:
+                # Try to parse years from string like "[2020, 2021, 2022, 2023, 2024]"
+                import re
+                year_matches = re.findall(r'\d{4}', years_analyzed)
+                years_analyzed = [int(year) for year in year_matches]
+            except:
+                years_analyzed = []
+        
+        years_count = len(years_analyzed) if isinstance(years_analyzed, list) else 0
+        files_processed = len(extracted_content) if extracted_content else years_count
+        
+        # Calculate years span
+        if years_count >= 2:
+            years_span = max(years_analyzed) - min(years_analyzed) + 1
+        else:
+            years_span = years_count
+        
+        # Check content quality indicators
+        business_strategy = analysis.get('business_strategy', {})
+        risk_strategy = analysis.get('risk_strategy', {})
+        
+        business_reasoning_length = len(str(business_strategy.get('dominant_rationale', business_strategy.get('dominant_reasoning', ''))))
+        risk_reasoning_length = len(str(risk_strategy.get('dominant_rationale', risk_strategy.get('dominant_reasoning', ''))))
+        
+        # Confidence scoring based on data scope and quality
+        confidence_score = 0
+        score_breakdown = []
+        
+        # Years coverage scoring (40 points max)
+        if years_count >= 5:
+            confidence_score += 40
+            score_breakdown.append(f"+40 pts: {years_count} years analyzed (excellent coverage)")
+        elif years_count >= 4:
+            confidence_score += 35
+            score_breakdown.append(f"+35 pts: {years_count} years analyzed (very good coverage)")
+        elif years_count >= 3:
+            confidence_score += 25
+            score_breakdown.append(f"+25 pts: {years_count} years analyzed (good coverage)")
+        elif years_count >= 2:
+            confidence_score += 15
+            score_breakdown.append(f"+15 pts: {years_count} years analyzed (adequate coverage)")
+        else:
+            confidence_score += 5
+            score_breakdown.append(f"+5 pts: {years_count} year(s) analyzed (limited coverage)")
+        
+        # Years span scoring (25 points max)
+        if years_span >= 5:
+            confidence_score += 25
+            score_breakdown.append(f"+25 pts: {years_span}-year timespan (excellent longitudinal view)")
+        elif years_span >= 4:
+            confidence_score += 20
+            score_breakdown.append(f"+20 pts: {years_span}-year timespan (very good longitudinal view)")
+        elif years_span >= 3:
+            confidence_score += 15
+            score_breakdown.append(f"+15 pts: {years_span}-year timespan (good longitudinal view)")
+        elif years_span >= 2:
+            confidence_score += 10
+            score_breakdown.append(f"+10 pts: {years_span}-year timespan (some longitudinal view)")
+        else:
+            confidence_score += 2
+            score_breakdown.append(f"+2 pts: {years_span}-year timespan (snapshot view)")
+        
+        # Files processed scoring (20 points max)
+        if files_processed >= 5:
+            confidence_score += 20
+            score_breakdown.append(f"+20 pts: {files_processed} files processed (comprehensive documentation)")
+        elif files_processed >= 4:
+            confidence_score += 16
+            score_breakdown.append(f"+16 pts: {files_processed} files processed (very good documentation)")
+        elif files_processed >= 3:
+            confidence_score += 12
+            score_breakdown.append(f"+12 pts: {files_processed} files processed (good documentation)")
+        elif files_processed >= 2:
+            confidence_score += 8
+            score_breakdown.append(f"+8 pts: {files_processed} files processed (adequate documentation)")
+        else:
+            confidence_score += 4
+            score_breakdown.append(f"+4 pts: {files_processed} file(s) processed (limited documentation)")
+        
+        # Content quality scoring (15 points max)
+        if business_reasoning_length >= 200 and risk_reasoning_length >= 200:
+            confidence_score += 15
+            score_breakdown.append(f"+15 pts: comprehensive reasoning (business: {business_reasoning_length}, risk: {risk_reasoning_length} chars)")
+        elif business_reasoning_length >= 150 and risk_reasoning_length >= 150:
+            confidence_score += 12
+            score_breakdown.append(f"+12 pts: good reasoning quality (business: {business_reasoning_length}, risk: {risk_reasoning_length} chars)")
+        elif business_reasoning_length >= 100 and risk_reasoning_length >= 100:
+            confidence_score += 8
+            score_breakdown.append(f"+8 pts: adequate reasoning (business: {business_reasoning_length}, risk: {risk_reasoning_length} chars)")
+        else:
+            confidence_score += 3
+            score_breakdown.append(f"+3 pts: basic reasoning (business: {business_reasoning_length}, risk: {risk_reasoning_length} chars)")
+        
+        # Determine final confidence level
+        if confidence_score >= 80:
+            confidence_level = "high"
+            explanation = f"High confidence ({confidence_score}/100 points) - Excellent analysis scope with comprehensive data coverage"
+        elif confidence_score >= 60:
+            confidence_level = "medium"
+            explanation = f"Medium confidence ({confidence_score}/100 points) - Good analysis scope with adequate data coverage"
+        else:
+            confidence_level = "low"
+            explanation = f"Low confidence ({confidence_score}/100 points) - Limited analysis scope or data coverage"
+        
+        # Create detailed explanation
+        detailed_explanation = f"{explanation}. Scoring breakdown: {'; '.join(score_breakdown[:3])}{'...' if len(score_breakdown) > 3 else ''}."
+        
+        return confidence_level, detailed_explanation
+    
     def _create_complete_report(self, analysis: Dict[str, Any], company_name: str,
-                              company_number: str, model: str, service: str) -> Dict[str, Any]:
-        """Create complete report in the specified format"""
+                              company_number: str, model: str, service: str, 
+                              extracted_content: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+        """Create complete report in the specified format with proper confidence assessment"""
         
         # Extract data with fallbacks
         business = analysis.get('business_strategy', {})
         risk = analysis.get('risk_strategy', {})
         swot = analysis.get('swot_analysis', {})
         
+        # **FIXED: Calculate confidence based on current analysis scope only**
+        confidence_level, confidence_explanation = self._determine_confidence_level(analysis, extracted_content)
+        
+        logger.info(f"🎯 Confidence assessment for {company_name}:")
+        logger.info(f"   Years analyzed: {analysis.get('years_analyzed', 'unknown')}")
+        logger.info(f"   Files processed: {len(extracted_content) if extracted_content else 'unknown'}")
+        logger.info(f"   Calculated confidence: {confidence_level}")
+        logger.info(f"   Explanation: {confidence_explanation}")
+        
         return {
             'success': True,
             'company_name': company_name,
             'company_number': company_number,
             'years_analyzed': analysis.get('years_analyzed', 'Recent period'),
-            'files_processed': 'Multiple financial documents',
+            'files_processed': len(extracted_content) if extracted_content else 'Multiple financial documents',
             'analysis_context': f'Strategic archetype analysis using {service}',
             
             # Executive Summary
@@ -896,10 +1030,11 @@ COMPANY CONTENT:{context_note}
                 'evidence_quotes': self._extract_evidence_points(risk.get('dominant_rationale', ''))
             },
             
-            # Metadata
+            # Metadata with CORRECTED confidence level
             'analysis_date': datetime.now().isoformat(),
             'analysis_type': f'complete_{service}_archetype_analysis',
-            'confidence_level': analysis.get('confidence_level', 'high'),
+            'confidence_level': confidence_level,  # **FIXED: Use calculated confidence**
+            'confidence_explanation': confidence_explanation,  # **NEW: Detailed explanation**
             'processing_stats': {
                 'model_used': model,
                 'service_used': service,
@@ -907,6 +1042,11 @@ COMPANY CONTENT:{context_note}
                 'archetypes_evaluated': {
                     'business_total': len(self.business_archetypes),
                     'risk_total': len(self.risk_archetypes)
+                },
+                'confidence_factors': {
+                    'years_count': len(extracted_content) if extracted_content else 0,
+                    'files_processed': len(extracted_content) if extracted_content else 0,
+                    'reasoning_quality': 'assessed'
                 }
             }
         }
@@ -987,6 +1127,7 @@ COMPANY CONTENT:{context_note}
                 'analysis_type': 'emergency_fallback',
                 'error_message': error_message,
                 'confidence_level': 'low',
+                'confidence_explanation': 'Low confidence due to emergency fallback - system constraints prevented full analysis',
                 'analysis_timestamp': datetime.now().isoformat(),
                 'troubleshooting': 'Check API keys and service availability'
             }
@@ -1026,6 +1167,15 @@ COMPANY CONTENT:{context_note}
             "archetypes_loaded": status["archetypes"],
             "details": status["environment"]
         }
+
+    # Backward compatibility method
+    def analyze_for_board(self, content: str, company_name: str, company_number: str,
+                         extracted_content: Optional[List[Dict[str, Any]]] = None,
+                         analysis_context: Optional[str] = None) -> Dict[str, Any]:
+        """Board analysis method for compatibility"""
+        return self.analyze_for_board_optimized(
+            content, company_name, company_number, extracted_content, analysis_context
+        )
 
 
 # Backward compatibility classes
