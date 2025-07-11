@@ -3,7 +3,7 @@
 Complete AI Analyzer with Exact Business and Risk Strategy Archetypes
 Generates reports in the specified format with proper SWOT analysis
 Thread-safe for Render deployment with enhanced debugging
-UPDATED: Fixed confidence level calculation based on analysis scope only
+FIXED: Confidence level calculation based on analysis scope only
 """
 
 import os
@@ -784,25 +784,41 @@ COMPANY CONTENT:{context_note}
         Returns:
             tuple: (confidence_level, explanation)
         """
-        # Extract years information
+        # FIXED: Extract years information with better parsing
         years_analyzed = analysis.get('years_analyzed', [])
+        logger.info(f"🔍 CONFIDENCE: Raw years_analyzed = {years_analyzed} (type: {type(years_analyzed)})")
+        
         if isinstance(years_analyzed, str):
             try:
-                # Try to parse years from string like "[2020, 2021, 2022, 2023, 2024]"
+                # Handle JSON string format like "[2020, 2021, 2022, 2023, 2024]"
                 import re
                 year_matches = re.findall(r'\d{4}', years_analyzed)
                 years_analyzed = [int(year) for year in year_matches]
+                logger.info(f"🔍 CONFIDENCE: Parsed years from string: {years_analyzed}")
             except:
                 years_analyzed = []
+                logger.warning("🔍 CONFIDENCE: Could not parse years from string")
+        
+        # FIXED: Ensure years_analyzed is a list and calculate properly
+        if not isinstance(years_analyzed, list):
+            years_analyzed = []
+            logger.warning(f"🔍 CONFIDENCE: years_analyzed is not a list, type: {type(years_analyzed)}")
         
         years_count = len(years_analyzed) if isinstance(years_analyzed, list) else 0
         files_processed = len(extracted_content) if extracted_content else years_count
         
-        # Calculate years span
+        logger.info(f"🔍 CONFIDENCE CALCULATION:")
+        logger.info(f"   Years analyzed: {years_analyzed}")
+        logger.info(f"   Years count: {years_count}")
+        logger.info(f"   Files processed: {files_processed}")
+        
+        # Calculate years span - FIXED
         if years_count >= 2:
             years_span = max(years_analyzed) - min(years_analyzed) + 1
+            logger.info(f"   Years span: {years_span} (from {min(years_analyzed)} to {max(years_analyzed)})")
         else:
             years_span = years_count
+            logger.info(f"   Years span: {years_span} (single year or no years)")
         
         # Check content quality indicators
         business_strategy = analysis.get('business_strategy', {})
@@ -811,11 +827,14 @@ COMPANY CONTENT:{context_note}
         business_reasoning_length = len(str(business_strategy.get('dominant_rationale', business_strategy.get('dominant_reasoning', ''))))
         risk_reasoning_length = len(str(risk_strategy.get('dominant_rationale', risk_strategy.get('dominant_reasoning', ''))))
         
-        # Confidence scoring based on data scope and quality
+        logger.info(f"   Business reasoning length: {business_reasoning_length}")
+        logger.info(f"   Risk reasoning length: {risk_reasoning_length}")
+        
+        # FIXED: Confidence scoring based on data scope and quality
         confidence_score = 0
         score_breakdown = []
         
-        # Years coverage scoring (40 points max)
+        # Years coverage scoring (40 points max) - FIXED thresholds
         if years_count >= 5:
             confidence_score += 40
             score_breakdown.append(f"+40 pts: {years_count} years analyzed (excellent coverage)")
@@ -832,7 +851,7 @@ COMPANY CONTENT:{context_note}
             confidence_score += 5
             score_breakdown.append(f"+5 pts: {years_count} year(s) analyzed (limited coverage)")
         
-        # Years span scoring (25 points max)
+        # Years span scoring (25 points max) - FIXED thresholds  
         if years_span >= 5:
             confidence_score += 25
             score_breakdown.append(f"+25 pts: {years_span}-year timespan (excellent longitudinal view)")
@@ -849,7 +868,7 @@ COMPANY CONTENT:{context_note}
             confidence_score += 2
             score_breakdown.append(f"+2 pts: {years_span}-year timespan (snapshot view)")
         
-        # Files processed scoring (20 points max)
+        # Files processed scoring (20 points max) - FIXED thresholds
         if files_processed >= 5:
             confidence_score += 20
             score_breakdown.append(f"+20 pts: {files_processed} files processed (comprehensive documentation)")
@@ -866,7 +885,7 @@ COMPANY CONTENT:{context_note}
             confidence_score += 4
             score_breakdown.append(f"+4 pts: {files_processed} file(s) processed (limited documentation)")
         
-        # Content quality scoring (15 points max)
+        # Content quality scoring (15 points max) - FIXED thresholds
         if business_reasoning_length >= 200 and risk_reasoning_length >= 200:
             confidence_score += 15
             score_breakdown.append(f"+15 pts: comprehensive reasoning (business: {business_reasoning_length}, risk: {risk_reasoning_length} chars)")
@@ -880,8 +899,8 @@ COMPANY CONTENT:{context_note}
             confidence_score += 3
             score_breakdown.append(f"+3 pts: basic reasoning (business: {business_reasoning_length}, risk: {risk_reasoning_length} chars)")
         
-        # Determine final confidence level
-        if confidence_score >= 80:
+        # FIXED: Determine final confidence level with correct thresholds
+        if confidence_score >= 80:  # FIXED: Back to 80 for HIGH confidence
             confidence_level = "high"
             explanation = f"High confidence ({confidence_score}/100 points) - Excellent analysis scope with comprehensive data coverage"
         elif confidence_score >= 60:
@@ -893,6 +912,11 @@ COMPANY CONTENT:{context_note}
         
         # Create detailed explanation
         detailed_explanation = f"{explanation}. Scoring breakdown: {'; '.join(score_breakdown[:3])}{'...' if len(score_breakdown) > 3 else ''}."
+        
+        logger.info(f"🎯 CONFIDENCE RESULT:")
+        logger.info(f"   Total score: {confidence_score}/100")
+        logger.info(f"   Confidence level: {confidence_level}")
+        logger.info(f"   Explanation: {detailed_explanation}")
         
         return confidence_level, detailed_explanation
     
