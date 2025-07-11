@@ -1484,14 +1484,28 @@ def download_company_filings(company_number, max_years):
 
 def filter_files_by_years(downloaded_files, selected_years):
     """Filter downloaded files to only include selected years"""
-    if not file_manager:
-        return []
+    filtered_files = []
     
-    try:
-        return file_manager.filter_files_by_years(downloaded_files, selected_years)
-    except Exception as e:
-        logger.error(f"Error filtering files by years: {e}")
-        return []
+    for file_info in downloaded_files:
+        file_date = file_info.get('date', '')
+        if file_date:
+            try:
+                if isinstance(file_date, str):
+                    if 'T' in file_date:
+                        file_year = datetime.fromisoformat(file_date.replace('Z', '+00:00')).year
+                    else:
+                        file_year = datetime.strptime(file_date, '%Y-%m-%d').year
+                else:
+                    file_year = file_date.year
+                
+                if file_year in selected_years:
+                    filtered_files.append(file_info)
+                    logger.info(f"✅ Included file: {file_info['filename']} (Year {file_year})")
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ Could not determine year for {file_info['filename']}: {e}")
+    
+    return filtered_files
 
 def extract_content_from_files(file_list):
     """Extract content from PDF files using parallel processing if available"""
