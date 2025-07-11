@@ -3,8 +3,9 @@
 Flask API for Strategic Analysis Tool with Database Integration
 Fixed for Flask 2.3+ compatibility and Gunicorn deployment
 Updated for ExecutiveAIAnalyzer (Board-Grade Analysis)
-Enhanced Lookup API - REVERTED TO SIMPLE WORKING VERSION
+Enhanced Lookup API - FIXED TO INCLUDE ALL REASONING FIELDS
 ADDED: Comprehensive debug logging for AI analyzer results
+FIXED: Missing reasoning fields in lookup API response
 """
 
 import time
@@ -230,7 +231,7 @@ def create_app():
         return jsonify({
             'service': 'Strategic Analysis API',
             'status': 'running',
-            'version': '3.0.0',  # Updated version for board-grade analysis
+            'version': '3.0.1',  # Updated version with fixed lookup API
             'component_status': component_statuses,
             'features': [
                 'Board-grade strategic analysis with executive insights',
@@ -242,7 +243,8 @@ def create_app():
                 'File-by-file synthesis and confidence scoring',
                 'Comprehensive evidence-based reasoning',
                 'Parallel PDF processing with fallback',
-                'Memory usage monitoring and optimization'
+                'Memory usage monitoring and optimization',
+                'FIXED: Complete lookup API with all reasoning fields'
             ],
             'configuration': {
                 'max_parallel_workers': MAX_PARALLEL_WORKERS,
@@ -309,7 +311,7 @@ def create_app():
 
     @app.route('/api/company/lookup/<company_identifier>')
     def lookup_company_analysis(company_identifier):
-        """Look up previous analyses for a company by name or number - SIMPLE WORKING VERSION"""
+        """Look up previous analyses for a company by name or number - FIXED TO INCLUDE ALL FIELDS"""
         if not db or components_status.get('AnalysisDatabase', {}).get('status') != 'ok':
             return jsonify({
                 'success': False,
@@ -340,6 +342,7 @@ def create_app():
                             except Exception as e:
                                 logger.warning(f"Archetype extraction failed for analysis {result.get('id')}: {e}")
                         
+                        # FIXED: Include ALL fields that the frontend needs
                         metadata = {
                             'analysis_id': result.get('id'),
                             'company_number': result.get('company_number'),
@@ -349,11 +352,24 @@ def create_app():
                             'files_processed': result.get('files_processed', 0),
                             'business_strategy': business_strategy,
                             'business_strategy_dominant': business_strategy,
+                            'business_strategy_reasoning': result.get('business_strategy_reasoning', ''),  # ADDED
+                            'business_strategy_secondary': result.get('business_strategy_secondary', ''),  # ADDED
                             'risk_strategy': risk_strategy,
                             'risk_strategy_dominant': risk_strategy,
+                            'risk_strategy_reasoning': result.get('risk_strategy_reasoning', ''),  # ADDED
+                            'risk_strategy_secondary': result.get('risk_strategy_secondary', ''),  # ADDED
+                            'raw_response': result.get('raw_response', ''),  # ADDED
                             'status': result.get('status'),
                             'analysis_type': result.get('analysis_type', 'unknown'),
-                            'confidence_level': result.get('confidence_level', 'medium')
+                            'confidence_level': result.get('confidence_level', 'medium'),
+                            # Additional fields that might be useful
+                            'executive_summary': result.get('executive_summary', ''),
+                            'strategic_recommendations': result.get('strategic_recommendations', []),
+                            'business_strategy_analysis': result.get('business_strategy_analysis', {}),
+                            'risk_strategy_analysis': result.get('risk_strategy_analysis', {}),
+                            'swot_analysis': result.get('swot_analysis', {}),
+                            'executive_dashboard': result.get('executive_dashboard', {}),
+                            'board_presentation_summary': result.get('board_presentation_summary', {})
                         }
                         analysis_metadata.append(metadata)
                     
@@ -392,6 +408,7 @@ def create_app():
                         except Exception as e:
                             logger.warning(f"Archetype extraction failed for analysis {result.get('id')}: {e}")
                     
+                    # FIXED: Include ALL fields that the frontend needs
                     metadata = {
                         'analysis_id': result.get('id'),
                         'company_number': result.get('company_number'),
@@ -401,11 +418,24 @@ def create_app():
                         'files_processed': result.get('files_processed', 0),
                         'business_strategy': business_strategy,
                         'business_strategy_dominant': business_strategy,
+                        'business_strategy_reasoning': result.get('business_strategy_reasoning', ''),  # ADDED
+                        'business_strategy_secondary': result.get('business_strategy_secondary', ''),  # ADDED
                         'risk_strategy': risk_strategy,
                         'risk_strategy_dominant': risk_strategy,
+                        'risk_strategy_reasoning': result.get('risk_strategy_reasoning', ''),  # ADDED
+                        'risk_strategy_secondary': result.get('risk_strategy_secondary', ''),  # ADDED
+                        'raw_response': result.get('raw_response', ''),  # ADDED
                         'status': result.get('status'),
                         'analysis_type': result.get('analysis_type', 'unknown'),
-                        'confidence_level': result.get('confidence_level', 'medium')
+                        'confidence_level': result.get('confidence_level', 'medium'),
+                        # Additional fields that might be useful
+                        'executive_summary': result.get('executive_summary', ''),
+                        'strategic_recommendations': result.get('strategic_recommendations', []),
+                        'business_strategy_analysis': result.get('business_strategy_analysis', {}),
+                        'risk_strategy_analysis': result.get('risk_strategy_analysis', {}),
+                        'swot_analysis': result.get('swot_analysis', {}),
+                        'executive_dashboard': result.get('executive_dashboard', {}),
+                        'board_presentation_summary': result.get('board_presentation_summary', {})
                     }
                     analysis_metadata.append(metadata)
                 
@@ -1170,7 +1200,7 @@ def create_app():
             
             status = {
                 'service': 'Strategic Analysis API',
-                'version': '3.0.0',  # Board-grade version
+                'version': '3.0.1',  # Board-grade version with fixed lookup
                 'status': 'operational',
                 'timestamp': datetime.now().isoformat(),
                 'system': {
@@ -1514,14 +1544,16 @@ app = create_app()
 if __name__ == '__main__':
     # Enhanced startup logging
     logger.info("=" * 70)
-    logger.info("🚀 STRATEGIC ANALYSIS API v3.0.0 - BOARD-GRADE ANALYSIS")
+    logger.info("🚀 STRATEGIC ANALYSIS API v3.0.1 - BOARD-GRADE ANALYSIS - FIXED LOOKUP")
     logger.info("=" * 70)
     logger.info("🔧 Features:")
     logger.info("   ✅ Board-grade strategic analysis with executive insights")
     logger.info("   ✅ Executive dashboard and strategic recommendations")
     logger.info("   ✅ Strategic risk heatmap for board oversight")
     logger.info("   ✅ Board presentation summary generation")
-    logger.info("   ✅ FIXED: Simple working lookup API")
+    logger.info("   ✅ FIXED: Complete lookup API with ALL reasoning fields")
+    logger.info("   ✅ FIXED: business_strategy_reasoning and risk_strategy_reasoning")
+    logger.info("   ✅ FIXED: secondary strategies and raw_response in API")
     logger.info("   ✅ Fixed Flask 2.3+ compatibility")
     logger.info("   ✅ Gunicorn deployment ready")
     logger.info("   ✅ Improved error handling and graceful degradation")
