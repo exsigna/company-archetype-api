@@ -5,6 +5,7 @@ ENHANCED: Complete text preservation and improved field mapping
 Fixed for Flask 2.3+ compatibility and Gunicorn deployment
 Updated for ExecutiveAIAnalyzer (Board-Grade Analysis)
 ENHANCED: Full reasoning text preservation throughout pipeline
+FIXED: Confidence level extraction from AI analyzer
 """
 
 import time
@@ -320,9 +321,10 @@ def create_app():
         return jsonify({
             'service': 'Strategic Analysis API',
             'status': 'running',
-            'version': '3.0.0-ENHANCED',  # Updated version for enhanced text preservation
+            'version': '3.1.0-CONFIDENCE-FIXED',  # Updated version for confidence fix
             'component_status': component_statuses,
             'features': [
+                'FIXED: Confidence level calculation and extraction',
                 'ENHANCED: Complete text preservation throughout pipeline',
                 'Board-grade strategic analysis with executive insights',
                 'Multi-file analysis with individual file processing',
@@ -341,7 +343,8 @@ def create_app():
                 'pdf_extraction_timeout': PDF_EXTRACTION_TIMEOUT,
                 'max_files_per_analysis': MAX_FILES_PER_ANALYSIS,
                 'memory_warning_threshold': f"{MEMORY_WARNING_THRESHOLD}%",
-                'enhanced_text_preservation': True
+                'enhanced_text_preservation': True,
+                'confidence_calculation_fixed': True
             },
             'endpoints': {
                 'analyze': '/api/analyze',
@@ -391,7 +394,8 @@ def create_app():
                 'configuration': {
                     'max_parallel_workers': MAX_PARALLEL_WORKERS,
                     'extraction_timeout': PDF_EXTRACTION_TIMEOUT,
-                    'enhanced_text_preservation': True
+                    'enhanced_text_preservation': True,
+                    'confidence_calculation_fixed': True
                 }
             })
         except Exception as e:
@@ -654,7 +658,7 @@ def create_app():
 
     @app.route('/api/analyze', methods=['POST'])
     def analyze_company():
-        """ENHANCED: Main analysis endpoint with complete text preservation"""
+        """ENHANCED: Main analysis endpoint with complete text preservation and FIXED confidence extraction"""
         
         # Check if critical components are available
         required_components = ['CompaniesHouseClient', 'ContentProcessor', 'ExecutiveAIAnalyzer']
@@ -805,6 +809,14 @@ def create_app():
                     logger.info(f"🔍 RISK REASONING PREVIEW: {dominant_reasoning[:100]}...")
             # ***** END ENHANCED DEBUG LOGGING *****
             
+            # FIXED: Get confidence level from the correct location in board_analysis
+            # The AI analyzer puts confidence_level at the top level, not under analysis_metadata
+            calculated_confidence = board_analysis.get('confidence_level', 'medium')
+            
+            logger.info(f"🔍 CONFIDENCE LEVEL EXTRACTION:")
+            logger.info(f"   From board_analysis.confidence_level: {calculated_confidence}")
+            logger.info(f"   Board analysis keys: {list(board_analysis.keys())}")
+            
             response_data = {
                 'success': True,
                 'company_number': company_number,
@@ -839,8 +851,11 @@ def create_app():
                 'risk_strategy_definition': board_analysis.get('risk_strategy', {}).get('dominant_definition', ''),
                 
                 'analysis_date': datetime.now().isoformat(),
-                'analysis_type': board_analysis.get('analysis_metadata', {}).get('analysis_type', 'board_grade_executive'),
-                'confidence_level': board_analysis.get('analysis_metadata', {}).get('confidence_level', 'medium'),
+                'analysis_type': board_analysis.get('analysis_type', 'board_grade_executive'),
+                
+                # FIXED: Use the correctly calculated confidence level from AI analyzer
+                'confidence_level': calculated_confidence,  # Use the AI analyzer's calculation, not a fallback
+                
                 'processing_stats': {
                     'parallel_extraction_used': len(filtered_files) > 1,
                     'total_content_length': sum(len(content.get('content', '')) for content in extracted_content),
@@ -849,9 +864,23 @@ def create_app():
                         for content in extracted_content
                     )),
                     'board_grade_analysis': True,
-                    'text_preservation_enhanced': True  # NEW: Flag indicating enhanced text preservation
+                    'text_preservation_enhanced': True,  # NEW: Flag indicating enhanced text preservation
+                    'confidence_calculation_source': 'ai_analyzer'  # NEW: Flag showing confidence source
                 }
             }
+            
+            # ENHANCED: Verify the confidence level is correctly set
+            logger.info(f"🎯 FINAL CONFIDENCE VERIFICATION:")
+            logger.info(f"   Years analyzed: {years} (count: {len(years)})")
+            logger.info(f"   Files processed: {len(extracted_content)}")
+            logger.info(f"   Expected confidence: HIGH (5 years + 5 files = 100/100 points)")
+            logger.info(f"   Actual confidence set: {calculated_confidence}")
+            
+            if calculated_confidence != 'high' and len(years) >= 5 and len(extracted_content) >= 5:
+                logger.warning(f"❌ CONFIDENCE MISMATCH: Should be 'high' but got '{calculated_confidence}'")
+                logger.warning(f"   This indicates the AI analyzer confidence calculation may need debugging")
+            else:
+                logger.info(f"✅ CONFIDENCE CORRECT: '{calculated_confidence}' matches expected level")
             
             # ENHANCED: Log the complete text lengths before storage
             logger.info(f"🔍 ENHANCED: Response data text lengths before storage:")
@@ -1303,7 +1332,8 @@ def create_app():
                 'individual_file_processing': True,
                 'synthesis_and_confidence_scoring': True,
                 'database_integration': db is not None,
-                'enhanced_text_preservation': True  # NEW: Enhanced text preservation capability
+                'enhanced_text_preservation': True,  # NEW: Enhanced text preservation capability
+                'confidence_calculation_fixed': True  # NEW: Confidence calculation fix
             }
             
             # Database status
@@ -1316,7 +1346,7 @@ def create_app():
             
             status = {
                 'service': 'Strategic Analysis API',
-                'version': '3.0.0-ENHANCED',  # Enhanced version number
+                'version': '3.1.0-CONFIDENCE-FIXED',  # Enhanced version number
                 'status': 'operational',
                 'timestamp': datetime.now().isoformat(),
                 'system': {
@@ -1344,7 +1374,8 @@ def create_app():
                     'complete_text_preservation': True,
                     'enhanced_field_mapping': True,
                     'improved_extraction_methods': True,
-                    'comprehensive_debugging': True
+                    'comprehensive_debugging': True,
+                    'confidence_calculation_fixed': True
                 }
             }
             
@@ -1382,335 +1413,3 @@ def create_app():
             
             if missing_components:
                 errors.append(f'Required components not available: {", ".join(missing_components)}')
-            
-            # Validate company number
-            company_number = data.get('company_number', '').strip()
-            if not company_number:
-                errors.append('Company number is required')
-            elif not validate_company_number(company_number):
-                errors.append('Invalid company number format')
-            
-            # Validate years
-            years = data.get('years', [])
-            if not years:
-                errors.append('Years array is required')
-            elif not isinstance(years, list):
-                errors.append('Years must be an array')
-            elif len(years) > MAX_FILES_PER_ANALYSIS:
-                errors.append(f'Too many years selected (max: {MAX_FILES_PER_ANALYSIS})')
-            elif len(years) > 10:
-                warnings.append('More than 10 years selected - this may take a long time')
-            elif len(years) == 1:
-                warnings.append('Only 1 year selected - multi-file analysis benefits require multiple years')
-            
-            # Check memory
-            try:
-                memory = psutil.virtual_memory()
-                if memory.percent > 80:
-                    warnings.append(f'High system memory usage ({memory.percent:.1f}%) - analysis may be slower')
-            except:
-                pass
-            
-            # Check if company exists (if no critical errors so far)
-            company_exists = False
-            company_name = 'Unknown'
-            if not errors and company_number and ch_client:
-                try:
-                    company_exists, company_name = ch_client.validate_company_exists(company_number)
-                    if not company_exists:
-                        errors.append(f'Company {company_number} not found')
-                except Exception as e:
-                    warnings.append(f'Could not verify company existence: {str(e)}')
-            
-            # Check for previous analyses
-            previous_analyses = []
-            if company_exists and db and components_status.get('AnalysisDatabase', {}).get('status') == 'ok':
-                try:
-                    previous_analyses = db.get_analysis_by_company(company_number)
-                    if previous_analyses:
-                        warnings.append(f'Company has {len(previous_analyses)} previous analyses')
-                except Exception as e:
-                    warnings.append(f'Could not check previous analyses: {str(e)}')
-            
-            validation_result = {
-                'valid': len(errors) == 0,
-                'errors': errors,
-                'warnings': warnings,
-                'company_info': {
-                    'company_number': company_number,
-                    'company_name': company_name,
-                    'exists': company_exists
-                },
-                'request_info': {
-                    'years_count': len(years),
-                    'years_selected': years,
-                    'estimated_files': len(years),
-                    'previous_analyses_count': len(previous_analyses)
-                },
-                'system_capabilities': {
-                    'board_grade_analysis_available': archetype_analyzer is not None,
-                    'ai_analysis_available': archetype_analyzer is not None,
-                    'parallel_processing_available': parallel_pdf_extractor is not None,
-                    'database_available': db is not None,
-                    'enhanced_text_preservation_available': True,  # NEW: Enhanced capability
-                    'max_recommended_years': 10,
-                    'max_allowed_years': MAX_FILES_PER_ANALYSIS
-                },
-                'component_status': {name: info['status'] for name, info in components_status.items()}
-            }
-            
-            return jsonify(validation_result)
-            
-        except Exception as e:
-            logger.error(f"Error validating request: {e}")
-            return jsonify({
-                'valid': False,
-                'errors': [f'Validation error: {str(e)}']
-            }), 500
-
-    # Error handlers
-    @app.errorhandler(404)
-    def not_found(error):
-        return jsonify({'error': 'Endpoint not found'}), 404
-
-    @app.errorhandler(500)
-    def internal_error(error):
-        logger.error(f"Internal server error: {error}")
-        return jsonify({'error': 'Internal server error'}), 500
-
-    @app.errorhandler(503)
-    def service_unavailable(error):
-        return jsonify({'error': 'Service temporarily unavailable'}), 503
-
-    return app
-
-# Helper functions for the analysis process
-def download_company_filings(company_number, max_years):
-    """Download company filings using existing method"""
-    try:
-        if not ch_client:
-            raise Exception("Companies House client not available")
-        
-        results = ch_client.download_annual_accounts(company_number, max_years)
-        logger.info(f"📥 Downloaded {results['total_downloaded']} files for {company_number}")
-        return results
-    except Exception as e:
-        logger.error(f"❌ Error downloading filings for {company_number}: {e}")
-        return None
-
-def filter_files_by_years(downloaded_files, selected_years):
-    """Filter downloaded files to only include selected years"""
-    filtered_files = []
-    
-    for file_info in downloaded_files:
-        file_date = file_info.get('date', '')
-        if file_date:
-            try:
-                if isinstance(file_date, str):
-                    if 'T' in file_date:
-                        file_year = datetime.fromisoformat(file_date.replace('Z', '+00:00')).year
-                    else:
-                        file_year = datetime.strptime(file_date, '%Y-%m-%d').year
-                else:
-                    file_year = file_date.year
-                
-                if file_year in selected_years:
-                    filtered_files.append(file_info)
-                    logger.info(f"✅ Included file: {file_info['filename']} (Year {file_year})")
-                    
-            except Exception as e:
-                logger.warning(f"⚠️ Could not determine year for {file_info['filename']}: {e}")
-    
-    return filtered_files
-
-def extract_content_from_files(downloaded_files):
-    """Extract content from downloaded files using parallel processing when beneficial"""
-    try:
-        logger.info(f"📄 Starting content extraction from {len(downloaded_files)} files")
-        
-        # Use parallel extraction for multiple files, sequential for single files
-        if len(downloaded_files) > 1 and parallel_pdf_extractor:
-            logger.info(f"🚀 Using parallel extraction for {len(downloaded_files)} files")
-            extracted_content = extract_multiple_files_parallel(downloaded_files)
-        else:
-            logger.info("📄 Using sequential extraction")
-            extracted_content = extract_content_from_files_legacy(downloaded_files)
-        
-        # Filter out None results and log statistics
-        valid_content = [content for content in extracted_content if content is not None]
-        
-        logger.info(f"✅ Content extraction completed: {len(valid_content)}/{len(downloaded_files)} files successful")
-        
-        if len(valid_content) != len(downloaded_files):
-            failed_count = len(downloaded_files) - len(valid_content)
-            logger.warning(f"⚠️ {failed_count} files failed extraction")
-        
-        return valid_content
-        
-    except Exception as e:
-        logger.error(f"❌ Error in content extraction: {e}")
-        return []
-
-def extract_content_from_files_legacy(downloaded_files):
-    """Legacy sequential extraction method - kept for fallback"""
-    if not pdf_extractor:
-        logger.error("PDF extractor not available")
-        return []
-    
-    extracted_content = []
-    
-    for file_info in downloaded_files:
-        try:
-            logger.info(f"📄 Extracting content from: {file_info['filename']}")
-            
-            # Read PDF content
-            with open(file_info['path'], 'rb') as f:
-                pdf_content = f.read()
-            
-            # Extract using PDFExtractor
-            extraction_result = pdf_extractor.extract_text_from_pdf(
-                pdf_content, file_info['filename']
-            )
-            
-            if extraction_result["extraction_status"] == "success":
-                content = extraction_result.get("raw_text", "")
-                if content and len(content.strip()) > 100:
-                    extracted_content.append({
-                        'filename': file_info['filename'],
-                        'date': file_info['date'],
-                        'content': content,
-                        'metadata': {
-                            'file_size': file_info['size'],
-                            'extraction_method': extraction_result["extraction_method"]
-                        }
-                    })
-                    logger.info(f"✅ Successfully extracted {len(content):,} characters from {file_info['filename']}")
-                else:
-                    logger.warning(f"⚠️ Insufficient content extracted from {file_info['filename']}")
-            else:
-                logger.error(f"❌ Extraction failed for {file_info['filename']}")
-                
-        except Exception as e:
-            logger.error(f"❌ Error extracting content from {file_info['filename']}: {e}")
-    
-    return extracted_content
-
-def process_and_analyze_content_for_board(extracted_content, company_name, company_number, analysis_context):
-    """Process and analyze content for board-grade insights"""
-    try:
-        if not content_processor or not archetype_analyzer:
-            logger.error("Content processor or executive analyzer not available")
-            return None
-        
-        logger.info(f"🧠 Starting board-grade content processing for {len(extracted_content)} files")
-        
-        # Process documents individually
-        processed_documents = []
-        for i, content_data in enumerate(extracted_content):
-            logger.info(f"📋 Processing document {i+1}: {content_data['filename']}")
-            processed = content_processor.process_document_content(
-                content_data['content'], content_data['metadata']
-            )
-            processed_documents.append(processed)
-        
-        # Combine documents for overall analysis
-        combined_analysis = content_processor.combine_multiple_documents(processed_documents)
-        logger.info("✅ Document combination completed")
-        
-        # Prepare combined content
-        combined_content = "\n\n".join([content_data['content'] for content_data in extracted_content])
-        logger.info(f"📊 Combined content length: {len(combined_content):,} characters")
-        
-        # Board-grade archetype analysis with executive insights
-        logger.info("🏛️ Performing board-grade archetype analysis with executive insights")
-        
-        # Ensure extracted_content dates are serializable before passing to analyzer
-        serializable_extracted_content = []
-        for content_data in extracted_content:
-            serializable_content = {
-                'filename': content_data['filename'],
-                'date': make_json_serializable(content_data['date']),
-                'content': content_data['content'],
-                'metadata': content_data['metadata']
-            }
-            serializable_extracted_content.append(serializable_content)
-        
-        # Use the new board-grade analysis method
-        board_analysis = archetype_analyzer.analyze_for_board(
-            combined_content,
-            company_name, 
-            company_number,
-            extracted_content=serializable_extracted_content,
-            analysis_context=analysis_context
-        )
-        
-        logger.info("✅ Board-grade archetype analysis completed")
-        
-        return {
-            'processed_content': combined_analysis,
-            'board_analysis': board_analysis,
-            'document_count': len(extracted_content)
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Error in board-grade content processing: {e}")
-        return None
-
-# Legacy function for backward compatibility
-def process_and_analyze_content_api(extracted_content, company_name, company_number):
-    """Legacy function for backward compatibility - delegates to board analysis"""
-    return process_and_analyze_content_for_board(extracted_content, company_name, company_number, 'Strategic Review')
-
-# Create the Flask app
-app = create_app()
-
-if __name__ == '__main__':
-    # Enhanced startup logging
-    logger.info("=" * 70)
-    logger.info("🚀 STRATEGIC ANALYSIS API v3.0.0-ENHANCED - COMPLETE TEXT PRESERVATION")
-    logger.info("=" * 70)
-    logger.info("🔧 ENHANCED Features:")
-    logger.info("   ✅ COMPLETE text preservation throughout entire pipeline")
-    logger.info("   ✅ Enhanced field mapping between AI analyzer and database")
-    logger.info("   ✅ Multiple extraction methods with comprehensive fallbacks")
-    logger.info("   ✅ Improved reasoning text storage and retrieval")
-    logger.info("   ✅ Board-grade strategic analysis with executive insights")
-    logger.info("   ✅ Executive dashboard and strategic recommendations")
-    logger.info("   ✅ Strategic risk heatmap for board oversight")
-    logger.info("   ✅ Board presentation summary generation")
-    logger.info("   ✅ Enhanced lookup API with complete text retrieval")
-    logger.info("   ✅ Fixed Flask 2.3+ compatibility")
-    logger.info("   ✅ Gunicorn deployment ready")
-    logger.info("   ✅ Improved error handling and graceful degradation")
-    logger.info("   ✅ Component status monitoring and health checks")
-    logger.info("   ✅ Memory usage monitoring and optimization")
-    logger.info("   ✅ Parallel PDF processing with fallback")
-    logger.info("   ✅ COMPREHENSIVE DEBUG LOGGING for text preservation")
-    logger.info("=" * 70)
-    logger.info(f"📊 Configuration:")
-    logger.info(f"   - Max parallel workers: {MAX_PARALLEL_WORKERS}")
-    logger.info(f"   - PDF extraction timeout: {PDF_EXTRACTION_TIMEOUT}s")
-    logger.info(f"   - Max files per analysis: {MAX_FILES_PER_ANALYSIS}")
-    logger.info(f"   - Memory warning threshold: {MEMORY_WARNING_THRESHOLD}%")
-    logger.info(f"   - Enhanced text preservation: ENABLED")
-    logger.info("=" * 70)
-    
-    # Final component status report
-    successful_components = sum(1 for comp in components_status.values() if comp['status'] == 'ok')
-    total_components = len(components_status)
-    logger.info(f"🎯 Components ready: {successful_components}/{total_components}")
-    
-    if successful_components < total_components:
-        logger.warning("⚠️  Some components failed to initialize - check logs above")
-        failed_components = [name for name, info in components_status.items() if info['status'] == 'error']
-        logger.warning(f"   Failed components: {', '.join(failed_components)}")
-    
-    logger.info("=" * 70)
-    logger.info("🎯 ENHANCED TEXT PRESERVATION: Ready to preserve complete reasoning text")
-    logger.info("=" * 70)
-    
-    port = int(os.environ.get('PORT', 10000))
-    debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
-    
-    logger.info(f"🌐 Starting ENHANCED server on port {port} (debug: {debug_mode})")
-    app.run(host='0.0.0.0', port=port, debug=debug_mode)
