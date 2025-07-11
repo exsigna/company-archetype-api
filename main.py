@@ -1413,3 +1413,172 @@ def create_app():
             
             if missing_components:
                 errors.append(f'Required components not available: {", ".join(missing_components)}')
+            
+            # Validate company number
+            company_number = data.get('company_number', '').strip()
+            if not company_number:
+                errors.append('Company number is required')
+            elif not validate_company_number(company_number):
+                errors.append('Invalid company number format')
+            
+            # Validate years
+            years = data.get('years', [])
+            if not years or not isinstance(years, list):
+                errors.append('Years array is required')
+            elif len(years) > MAX_FILES_PER_ANALYSIS:
+                errors.append(f'Too many years requested. Maximum: {MAX_FILES_PER_ANALYSIS}')
+            elif len(years) == 0:
+                errors.append('At least one year must be specified')
+            
+            # Check memory usage
+            try:
+                memory = psutil.virtual_memory()
+                if memory.percent > MEMORY_WARNING_THRESHOLD:
+                    warnings.append(f'High memory usage: {memory.percent:.1f}%. Analysis may be slower.')
+            except:
+                warnings.append('Could not check memory usage')
+            
+            # Check database availability
+            if not db or components_status.get('AnalysisDatabase', {}).get('status') != 'ok':
+                warnings.append('Database not available - results will not be stored')
+            
+            # Validate analysis context (optional)
+            analysis_context = data.get('analysis_context', 'Strategic Review')
+            if not isinstance(analysis_context, str) or len(analysis_context.strip()) == 0:
+                warnings.append('Analysis context should be a non-empty string')
+            
+            # Calculate estimated processing time
+            estimated_time = len(years) * 30  # Rough estimate: 30 seconds per year
+            if estimated_time > 300:  # 5 minutes
+                warnings.append(f'Estimated processing time: {estimated_time//60} minutes')
+            
+            return jsonify({
+                'valid': len(errors) == 0,
+                'errors': errors,
+                'warnings': warnings,
+                'estimated_processing_time_seconds': estimated_time,
+                'component_status': {name: info['status'] for name, info in components_status.items()},
+                'system_ready': len(errors) == 0
+            })
+            
+        except Exception as e:
+            logger.error(f"Error validating request: {e}")
+            return jsonify({
+                'valid': False,
+                'errors': [f'Validation error: {str(e)}']
+            }), 500
+
+    return app
+
+# Helper functions that need to be defined
+def download_company_filings(company_number, max_years):
+    """Download company filings using the Companies House client"""
+    if not ch_client:
+        return None
+    
+    try:
+        return ch_client.download_annual_accounts(company_number, max_years)
+    except Exception as e:
+        logger.error(f"Error downloading filings for {company_number}: {e}")
+        return None
+
+def filter_files_by_years(downloaded_files, selected_years):
+    """Filter downloaded files to only include selected years"""
+    if not file_manager:
+        return []
+    
+    try:
+        return file_manager.filter_files_by_years(downloaded_files, selected_years)
+    except Exception as e:
+        logger.error(f"Error filtering files by years: {e}")
+        return []
+
+def extract_content_from_files(file_list):
+    """Extract content from PDF files using parallel processing if available"""
+    if not file_list:
+        return []
+    
+    try:
+        # Use parallel extractor if available and multiple files
+        if parallel_pdf_extractor and len(file_list) > 1:
+            logger.info(f"Using parallel PDF extraction for {len(file_list)} files")
+            return parallel_pdf_extractor.extract_multiple_files(file_list)
+        
+        # Fallback to single-file extractor
+        elif pdf_extractor:
+            logger.info(f"Using single-file PDF extraction for {len(file_list)} files")
+            extracted_content = []
+            for file_info in file_list:
+                try:
+                    content = pdf_extractor.extract_text(file_info['filepath'])
+                    if content:
+                        extracted_content.append({
+                            'content': content,
+                            'filepath': file_info['filepath'],
+                            'year': file_info.get('year'),
+                            'metadata': {
+                                'extraction_method': 'single_file',
+                                'file_size': file_info.get('size', 0)
+                            }
+                        })
+                except Exception as file_error:
+                    logger.warning(f"Failed to extract from {file_info['filepath']}: {file_error}")
+                    continue
+            
+            return extracted_content
+        
+        else:
+            logger.error("No PDF extractor available")
+            return []
+            
+    except Exception as e:
+        logger.error(f"Error extracting content from files: {e}")
+        return []
+
+def process_and_analyze_content_for_board(extracted_content, company_name, company_number, analysis_context):
+    """Process and analyze content for board-grade strategic analysis"""
+    if not archetype_analyzer or not content_processor:
+        logger.error("Required analyzers not available")
+        return None
+    
+    try:
+        # Process content using content processor
+        logger.info("Processing content for board analysis...")
+        processed_content = content_processor.process_multiple_files(extracted_content)
+        
+        if not processed_content:
+            logger.error("Content processing failed")
+            return None
+        
+        # Perform board-grade AI analysis
+        logger.info("Performing board-grade AI analysis...")
+        board_analysis = archetype_analyzer.analyze_for_board_presentation(
+            processed_content, 
+            company_name, 
+            company_number,
+            analysis_context
+        )
+        
+        if not board_analysis:
+            logger.error("Board-grade analysis failed")
+            return None
+        
+        return {
+            'board_analysis': board_analysis,
+            'processed_content': processed_content
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in board content analysis: {e}")
+        return None
+
+# Create the Flask application instance
+app = create_app()
+
+if __name__ == '__main__':
+    # Development server
+    app.run(host='0.0.0.0', port=5000, debug=False)
+else:
+    # Production deployment with Gunicorn
+    # The app instance will be used by Gunicorn
+    pass
