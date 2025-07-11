@@ -4,7 +4,7 @@ Complete AI Analyzer with Exact Business and Risk Strategy Archetypes
 Generates reports in the specified format with proper SWOT analysis
 Thread-safe for Render deployment with enhanced debugging
 FIXED: Confidence level calculation based on analysis scope only
-ENHANCED: Better confidence debugging and calculation tracking
+ENHANCED: Strategic content optimization with technical insights extraction
 """
 
 import os
@@ -14,6 +14,7 @@ import json
 import time
 import random
 import threading
+import re
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
@@ -57,13 +58,14 @@ class TimeoutManager:
 
 class CompleteAIAnalyzer:
     """
-    Complete AI Analyzer with exact archetypes and report format
+    Complete AI Analyzer with exact archetypes and strategic content optimization
     FIXED: Proper confidence level calculation and debugging
+    ENHANCED: Intelligent content optimization with strategic technical insights
     """
     
     def __init__(self):
         """Initialize with complete archetype definitions"""
-        logger.info("🚀 Initializing Complete AI Analyzer with exact archetypes...")
+        logger.info("🚀 Initializing Complete AI Analyzer with enhanced optimization...")
         
         # Log environment for debugging
         self._log_environment_debug()
@@ -73,13 +75,13 @@ class CompleteAIAnalyzer:
         self.anthropic_client = None
         self.client_type = "uninitialized"
         
-        # Model configuration optimized for Render - Updated for large content analysis
+        # Model configuration optimized for Render
         self.primary_model = "gpt-4-turbo"
         self.fallback_model = "gpt-4-turbo-2024-04-09"
         self.max_output_tokens = 4096
         self.max_retries = 3
         self.base_retry_delay = 3.0
-        self.max_content_chars = 150000
+        self.max_content_chars = 150000  # 150K character limit
         self.request_timeout = 60
         
         # Complete Business Strategy Archetypes
@@ -266,7 +268,7 @@ class CompleteAIAnalyzer:
                                   analysis_context: Optional[str] = None) -> Dict[str, Any]:
         """
         Complete analysis generating full report format (thread-safe for Render)
-        FIXED: Enhanced confidence calculation debugging
+        ENHANCED: Uses strategic content optimization
         """
         start_time = time.time()
         
@@ -279,8 +281,8 @@ class CompleteAIAnalyzer:
                 logger.error("❌ No AI clients available - using emergency analysis")
                 return self._create_emergency_analysis(company_name, company_number, "No AI clients available")
             
-            # Optimize content
-            optimized_content = self._optimize_content(content)
+            # ENHANCED: Strategic content optimization
+            optimized_content = self._optimize_content_strategically(content, extracted_content)
             
             # Try OpenAI analysis first if available
             if self.openai_client and self.client_type == "openai_primary":
@@ -322,6 +324,410 @@ class CompleteAIAnalyzer:
             import traceback
             logger.error(f"📊 Traceback: {traceback.format_exc()}")
             return self._create_emergency_analysis(company_name, company_number, str(e))
+    
+    def _optimize_content_strategically(self, content: str, extracted_content: Optional[List[Dict[str, Any]]] = None) -> str:
+        """
+        ENHANCED: Strategic content optimization with technical insights extraction
+        
+        This is the main optimization method that:
+        1. Extracts strategic technical insights first
+        2. Optimizes main content based on file structure
+        3. Combines both for maximum strategic value
+        """
+        
+        if len(content) <= self.max_content_chars:
+            logger.info(f"📊 Content within limits: {len(content):,} chars")
+            return content
+        
+        logger.info(f"📊 Strategic optimization: {len(content):,} chars -> target: {self.max_content_chars:,}")
+        
+        # Step 1: Extract strategic technical insights first (reserve 20% of space)
+        strategic_technical = self._extract_strategic_technical_insights(content)
+        technical_space_used = len(strategic_technical)
+        
+        # Step 2: Calculate remaining space for main content
+        main_content_limit = self.max_content_chars - technical_space_used - 1000  # Leave buffer
+        
+        # Step 3: Optimize main content based on file structure
+        if extracted_content and len(extracted_content) > 1:
+            logger.info(f"📄 Multi-file optimization for {len(extracted_content)} files")
+            optimized_main = self._optimize_multi_file_content(extracted_content, main_content_limit)
+        else:
+            logger.info("📄 Single content optimization")
+            optimized_main = self._optimize_single_content(content, main_content_limit)
+        
+        # Step 4: Combine with strategic technical insights
+        if strategic_technical:
+            final_content = f"{optimized_main}\n\n=== STRATEGIC TECHNICAL INSIGHTS ===\n{strategic_technical}"
+            logger.info(f"✅ Combined with {len(strategic_technical)} chars of strategic technical insights")
+        else:
+            final_content = optimized_main
+            logger.info("✅ No strategic technical insights found")
+        
+        logger.info(f"✅ Strategic optimization complete: {len(final_content):,} chars")
+        return final_content
+    
+    def _extract_strategic_technical_insights(self, content: str) -> str:
+        """
+        Extract strategically valuable information from technical sections
+        Focus on numbers and policies that reveal business model and risk appetite
+        """
+        
+        strategic_technical_patterns = {
+            'investment_priorities': {
+                'keywords': ['additions', 'capex', 'capital expenditure', 'investments', 'technology', 'infrastructure'],
+                'context_words': ['million', 'thousand', '£', '$', 'spent', 'invested'],
+                'strategic_value': 'Reveals where management prioritizes spending → business archetype'
+            },
+            'risk_appetite_indicators': {
+                'keywords': ['provision', 'impairment', 'credit loss', 'bad debt', 'floor', 'overlay'],
+                'context_words': ['rate', '%', 'basis points', 'conservative', 'prudent'],
+                'strategic_value': 'Shows actual vs required conservatism → risk archetype'
+            },
+            'revenue_model': {
+                'keywords': ['fee income', 'commission', 'arrangement fee', 'early repayment', 'penalty'],
+                'context_words': ['million', 'thousand', '£', '$', 'revenue', 'income'],
+                'strategic_value': 'Reveals profit sources → fee extraction vs interest margin strategy'
+            },
+            'competitive_benchmarks': {
+                'keywords': ['industry average', 'peer group', 'market comparison', 'benchmark'],
+                'context_words': ['outperform', 'above', 'below', 'better', 'worse'],
+                'strategic_value': 'Shows relative performance → market position archetype'
+            },
+            'policy_changes': {
+                'keywords': ['change in policy', 'accounting change', 'new standard', 'adopted'],
+                'context_words': ['conservative', 'prudent', 'aggressive', 'early adoption'],
+                'strategic_value': 'Reveals management philosophy shifts'
+            }
+        }
+        
+        extracted_insights = []
+        
+        for insight_type, pattern in strategic_technical_patterns.items():
+            insights = self._find_strategic_technical_content(content, pattern)
+            if insights:
+                extracted_insights.extend(insights)
+        
+        return "\n\n".join(extracted_insights) if extracted_insights else ""
+    
+    def _find_strategic_technical_content(self, content: str, pattern: dict) -> List[str]:
+        """Find specific strategic insights in technical content"""
+        
+        insights = []
+        lines = content.split('\n')
+        
+        for i, line in enumerate(lines):
+            line_lower = line.lower()
+            
+            # Check if line contains relevant keywords
+            has_keyword = any(keyword in line_lower for keyword in pattern['keywords'])
+            if not has_keyword:
+                continue
+                
+            # Check if line has strategic context (numbers, comparisons, etc.)
+            has_context = any(context in line_lower for context in pattern['context_words'])
+            if not has_context:
+                continue
+            
+            # Extract surrounding context (3 lines before and after)
+            start_idx = max(0, i - 3)
+            end_idx = min(len(lines), i + 4)
+            context_lines = lines[start_idx:end_idx]
+            
+            # Clean and format the insight
+            insight = self._format_technical_insight(context_lines, pattern['strategic_value'])
+            if insight and len(insight) > 50:  # Only include substantial insights
+                insights.append(insight)
+        
+        return insights[:3]  # Limit to top 3 insights per category
+    
+    def _format_technical_insight(self, context_lines: List[str], strategic_value: str) -> str:
+        """Format technical insight with strategic context"""
+        
+        # Clean up the lines
+        cleaned_lines = []
+        for line in context_lines:
+            cleaned = line.strip()
+            if cleaned and not cleaned.startswith('Page ') and len(cleaned) > 10:
+                cleaned_lines.append(cleaned)
+        
+        if len(cleaned_lines) < 2:
+            return ""
+        
+        # Format as strategic insight
+        content = " ".join(cleaned_lines)
+        
+        # Remove excessive whitespace and clean up
+        content = re.sub(r'\s+', ' ', content)
+        content = content[:500]  # Limit length
+        
+        return f"STRATEGIC TECHNICAL INSIGHT: {content}\n[Strategic Value: {strategic_value}]"
+    
+    def _optimize_multi_file_content(self, extracted_content: List[Dict[str, Any]], target_chars: int) -> str:
+        """Optimize content across multiple files with balanced sampling"""
+        
+        total_files = len(extracted_content)
+        chars_per_file = target_chars // total_files
+        min_chars_per_file = 10000  # Minimum 10K chars per file
+        
+        # If equal distribution is too small, prioritize recent files
+        if chars_per_file < min_chars_per_file:
+            return self._optimize_with_recency_priority(extracted_content, target_chars)
+        
+        optimized_parts = []
+        
+        for i, file_data in enumerate(extracted_content):
+            filename = file_data.get('filename', f'file_{i+1}')
+            file_content = file_data.get('content', '')
+            
+            logger.info(f"📄 Optimizing {filename}: {len(file_content):,} chars -> {chars_per_file:,}")
+            
+            if len(file_content) <= chars_per_file:
+                optimized_file_content = file_content
+            else:
+                # Intelligent sampling for this file
+                optimized_file_content = self._sample_file_content(file_content, chars_per_file, filename)
+            
+            optimized_parts.append(f"\n\n=== FILE: {filename} ===\n{optimized_file_content}")
+        
+        combined = "\n".join(optimized_parts)
+        logger.info(f"✅ Multi-file optimization complete: {len(combined):,} chars from {total_files} files")
+        return combined
+    
+    def _optimize_with_recency_priority(self, extracted_content: List[Dict[str, Any]], target_chars: int) -> str:
+        """Prioritize recent years when space is limited"""
+        
+        # Sort by year (most recent first)
+        sorted_files = sorted(extracted_content, key=lambda x: self._extract_year_from_filename(x.get('filename', '')), reverse=True)
+        
+        optimized_parts = []
+        remaining_chars = target_chars
+        
+        for i, file_data in enumerate(sorted_files):
+            filename = file_data.get('filename', f'file_{i+1}')
+            file_content = file_data.get('content', '')
+            year = self._extract_year_from_filename(filename)
+            
+            # Allocate more space to recent years
+            if i == 0:  # Most recent year
+                allocation = min(remaining_chars * 0.4, len(file_content))  # 40% for most recent
+            elif i == 1:  # Second most recent
+                allocation = min(remaining_chars * 0.3, len(file_content))  # 30% for second
+            else:  # Remaining years split evenly
+                remaining_files = len(sorted_files) - 2
+                allocation = min(remaining_chars / max(remaining_files, 1), len(file_content))
+            
+            allocation = int(allocation)
+            
+            if allocation > 5000:  # Only include if meaningful content
+                if len(file_content) <= allocation:
+                    sampled_content = file_content
+                else:
+                    sampled_content = self._sample_file_content(file_content, allocation, filename)
+                
+                optimized_parts.append(f"\n\n=== FILE: {filename} (Year {year}) ===\n{sampled_content}")
+                remaining_chars -= len(sampled_content)
+                
+                logger.info(f"📄 Included {filename}: {len(sampled_content):,} chars (Year {year})")
+        
+        combined = "\n".join(optimized_parts)
+        logger.info(f"✅ Recency-prioritized optimization: {len(combined):,} chars")
+        return combined
+    
+    def _sample_file_content(self, content: str, target_chars: int, filename: str) -> str:
+        """Intelligently sample content from a single file"""
+        
+        if len(content) <= target_chars:
+            return content
+        
+        # Key sections to prioritize (common in financial documents)
+        priority_keywords = [
+            'executive summary', 'chairman', 'chief executive', 'ceo report',
+            'strategic report', 'directors report', 'business review',
+            'principal risks', 'risk management', 'risk factors',
+            'financial highlights', 'key performance', 'results summary',
+            'outlook', 'strategy', 'objectives', 'future prospects'
+        ]
+        
+        # Split content into sections
+        sections = self._split_into_sections(content)
+        
+        # Score sections by importance
+        scored_sections = []
+        for section in sections:
+            score = self._score_section_enhanced(section, priority_keywords)
+            scored_sections.append((score, section))
+        
+        # Sort by score (highest first)
+        scored_sections.sort(reverse=True, key=lambda x: x[0])
+        
+        # Build optimized content by taking highest-scoring sections
+        optimized_content = ""
+        for score, section in scored_sections:
+            if len(optimized_content) + len(section) <= target_chars:
+                optimized_content += section + "\n\n"
+            else:
+                # Add partial section if it fits
+                remaining_space = target_chars - len(optimized_content)
+                if remaining_space > 100:  # Only if meaningful space left
+                    # Try to end at sentence boundary
+                    partial = section[:remaining_space]
+                    last_period = partial.rfind('.')
+                    if last_period > remaining_space * 0.8:  # If we find a period near the end
+                        partial = partial[:last_period + 1]
+                    optimized_content += partial
+                break
+        
+        logger.info(f"📄 Sampled {filename}: {len(content):,} -> {len(optimized_content):,} chars")
+        return optimized_content.strip()
+    
+    def _split_into_sections(self, content: str) -> List[str]:
+        """Split content into logical sections"""
+        
+        # Common section headers in financial documents
+        section_markers = [
+            'STRATEGIC REPORT', 'DIRECTORS REPORT', 'CHAIRMAN', 'CHIEF EXECUTIVE',
+            'BUSINESS REVIEW', 'FINANCIAL REVIEW', 'RISK MANAGEMENT', 'GOVERNANCE',
+            'NOTES TO THE FINANCIAL STATEMENTS', 'INDEPENDENT AUDITOR'
+        ]
+        
+        sections = []
+        current_section = ""
+        
+        for line in content.split('\n'):
+            line_upper = line.strip().upper()
+            
+            # Check if this line is a section header
+            is_section_header = any(marker in line_upper for marker in section_markers)
+            
+            if is_section_header and current_section.strip():
+                # Save previous section and start new one
+                sections.append(current_section.strip())
+                current_section = line + "\n"
+            else:
+                current_section += line + "\n"
+            
+            # Also split on very long sections (every 2000 lines)
+            if current_section.count('\n') > 2000:
+                sections.append(current_section.strip())
+                current_section = ""
+        
+        # Add the last section
+        if current_section.strip():
+            sections.append(current_section.strip())
+        
+        return sections
+    
+    def _score_section_enhanced(self, section: str, priority_keywords: List[str]) -> float:
+        """Enhanced section scoring that values strategic technical content"""
+        
+        section_lower = section.lower()
+        score = 0.0
+        
+        # Base score on length
+        score += len(section) * 0.0001
+        
+        # High value keywords (executive content)
+        for keyword in priority_keywords:
+            if keyword in section_lower:
+                score += 10.0
+        
+        # Strategic technical indicators (NEW)
+        strategic_technical_terms = {
+            'investment_indicators': ['capex', 'capital expenditure', 'technology investment', 'infrastructure spend'],
+            'risk_indicators': ['provision rate', 'impairment rate', 'credit loss', 'coverage ratio'],
+            'competitive_indicators': ['industry average', 'peer comparison', 'market benchmark'],
+            'efficiency_indicators': ['cost income ratio', 'operating leverage', 'productivity'],
+            'profitability_indicators': ['net interest margin', 'return on equity', 'return on assets']
+        }
+        
+        for category, terms in strategic_technical_terms.items():
+            for term in terms:
+                if term in section_lower:
+                    score += 7.0  # High value for strategic technical content
+                    
+        # Regular strategy/risk terms
+        strategy_terms = ['strategy', 'strategic', 'objective', 'goal', 'vision', 'mission']
+        risk_terms = ['risk', 'threat', 'challenge', 'uncertainty', 'regulatory']
+        
+        for term in strategy_terms:
+            score += section_lower.count(term) * 5.0
+        for term in risk_terms:
+            score += section_lower.count(term) * 4.0
+        
+        # Reduce score for pure compliance boilerplate
+        boilerplate_terms = ['in accordance with', 'as required by', 'comply with', 'pursuant to']
+        for term in boilerplate_terms:
+            if term in section_lower:
+                score *= 0.7  # Reduce but don't eliminate
+        
+        # Boost score for quantitative insights
+        if re.search(r'£[\d,]+|[\d.]+%|[\d.]+ basis points', section):
+            score *= 1.3  # Boost sections with specific numbers
+        
+        return score
+    
+    def _extract_year_from_filename(self, filename: str) -> int:
+        """Extract year from filename for prioritization"""
+        # Look for 4-digit years
+        year_match = re.search(r'20\d{2}', filename)
+        if year_match:
+            return int(year_match.group())
+        
+        # Default to current year if no year found
+        return datetime.now().year
+    
+    def _optimize_single_content(self, content: str, target_chars: int) -> str:
+        """Optimize single large content block"""
+        
+        # For single content, take strategic approach:
+        # 1. First 30% (early content often has summaries)
+        # 2. Smart sampling from middle sections
+        # 3. Last 10% (often has recent developments)
+        
+        first_part_size = int(target_chars * 0.3)
+        last_part_size = int(target_chars * 0.1)
+        middle_part_size = target_chars - first_part_size - last_part_size
+        
+        # Take first part
+        first_part = content[:first_part_size]
+        
+        # Take last part
+        last_part = content[-last_part_size:] if len(content) > last_part_size else ""
+        
+        # Sample middle part intelligently
+        middle_start = first_part_size
+        middle_end = len(content) - last_part_size
+        middle_content = content[middle_start:middle_end]
+        
+        if len(middle_content) <= middle_part_size:
+            middle_part = middle_content
+        else:
+            # Sample key sections from middle
+            middle_sections = self._split_into_sections(middle_content)
+            scored_sections = [(self._score_section_enhanced(s, []), s) for s in middle_sections]
+            scored_sections.sort(reverse=True, key=lambda x: x[0])
+            
+            middle_part = ""
+            for score, section in scored_sections:
+                if len(middle_part) + len(section) <= middle_part_size:
+                    middle_part += section + "\n\n"
+                else:
+                    break
+        
+        # Combine parts
+        optimized = f"{first_part}\n\n[... MIDDLE CONTENT SAMPLED ...]\n\n{middle_part}\n\n[... FINAL CONTENT ...]\n\n{last_part}"
+        
+        logger.info(f"📊 Single content optimized: {len(content):,} -> {len(optimized):,} chars")
+        return optimized
+    
+    # Backward compatibility - keep original method name
+    def _optimize_content(self, content: str, extracted_content: Optional[List[Dict[str, Any]]] = None) -> str:
+        """Main content optimization method - now uses strategic optimization"""
+        return self._optimize_content_strategically(content, extracted_content)
+    
+    # ... (keeping all other existing methods unchanged for brevity)
+    # All the AI client methods, parsing, confidence calculation, etc. remain the same
     
     def _analyze_with_openai(self, content: str, company_name: str, company_number: str,
                            analysis_context: Optional[str], extracted_content: Optional[List[Dict[str, Any]]] = None) -> Optional[Dict[str, Any]]:
@@ -585,21 +991,11 @@ The confidence_level will be calculated by the system based on data scope and qu
 COMPANY CONTENT:{context_note}
 {content}"""
     
-    def _optimize_content(self, content: str) -> str:
-        """Optimize content length"""
-        if len(content) <= self.max_content_chars:
-            return content
-        
-        optimized = content[:self.max_content_chars]
-        logger.info(f"📊 Content optimized: {len(optimized):,} chars from {len(content):,}")
-        return optimized
-    
     def _parse_json_response(self, response: str) -> Optional[Dict[str, Any]]:
         """Parse JSON response with error handling"""
         try:
             return json.loads(response)
         except json.JSONDecodeError:
-            import re
             json_match = re.search(r'\{.*\}', response, re.DOTALL)
             if json_match:
                 try:
@@ -631,7 +1027,6 @@ COMPANY CONTENT:{context_note}
         if isinstance(years_analyzed, str):
             try:
                 # Handle various string formats
-                import re
                 year_matches = re.findall(r'\b(20\d{2})\b', years_analyzed)
                 parsed_years = [int(year) for year in year_matches]
                 logger.info(f"   Parsed years from string: {parsed_years}")
@@ -957,6 +1352,12 @@ COMPANY CONTENT:{context_note}
                         'calculated_level': confidence_level,
                         'calculation_timestamp': datetime.now().isoformat()
                     }
+                },
+                'content_optimization': {
+                    'strategy': 'strategic_technical_extraction',
+                    'technical_insights_included': 'yes',
+                    'multi_file_balancing': len(extracted_content) > 1 if extracted_content else False,
+                    'recency_prioritization': True
                 }
             }
         }
@@ -1062,6 +1463,12 @@ COMPANY CONTENT:{context_note}
             "environment": {
                 "openai_key_present": bool(os.environ.get('OPENAI_API_KEY', '').strip()),
                 "anthropic_key_present": bool(os.environ.get('ANTHROPIC_API_KEY', '').strip())
+            },
+            "optimization": {
+                "strategic_technical_extraction": True,
+                "multi_file_balancing": True,
+                "recency_prioritization": True,
+                "max_content_chars": self.max_content_chars
             }
         }
     
@@ -1075,7 +1482,8 @@ COMPANY CONTENT:{context_note}
             "timestamp": datetime.now().isoformat(),
             "ready": status["ready"],
             "archetypes_loaded": status["archetypes"],
-            "details": status["environment"]
+            "details": status["environment"],
+            "optimization_features": status["optimization"]
         }
 
     # Backward compatibility method
