@@ -802,11 +802,13 @@ COMPANY CONTENT:{context_note}
             'business_strategy_analysis': {
                 'dominant': {
                     'archetype': business.get('dominant_archetype', 'Disciplined Specialist Growth'),
+                    'definition': self.business_archetypes.get(business.get('dominant_archetype', 'Disciplined Specialist Growth'), 'Niche focus with strong underwriting edge; grows opportunistically while recycling balance-sheet.'),
                     'rationale': business.get('dominant_rationale', 'Conservative growth approach with focus on underwriting quality.'),
                     'evidence': self._extract_evidence_points(business.get('dominant_rationale', ''))
                 },
                 'secondary': {
                     'archetype': business.get('secondary_archetype', 'Service-Driven Differentiator'),
+                    'definition': self.business_archetypes.get(business.get('secondary_archetype', 'Service-Driven Differentiator'), 'Wins by superior client experience / advice rather than price or scale.'),
                     'rationale': business.get('secondary_rationale', 'Focus on customer service and relationship building.'),
                     'evidence': self._extract_evidence_points(business.get('secondary_rationale', ''))
                 },
@@ -817,11 +819,13 @@ COMPANY CONTENT:{context_note}
             'risk_strategy_analysis': {
                 'dominant': {
                     'archetype': risk.get('dominant_archetype', 'Risk-First Conservative'),
+                    'definition': self.risk_archetypes.get(risk.get('dominant_archetype', 'Risk-First Conservative'), 'Prioritises capital preservation and regulatory compliance; growth is secondary to resilience.'),
                     'rationale': risk.get('dominant_rationale', 'Prioritizes capital preservation and regulatory compliance.'),
                     'evidence': self._extract_evidence_points(risk.get('dominant_rationale', ''))
                 },
                 'secondary': {
                     'archetype': risk.get('secondary_archetype', 'Rules-Led Operator'),
+                    'definition': self.risk_archetypes.get(risk.get('secondary_archetype', 'Rules-Led Operator'), 'Strict adherence to rules and checklists; prioritises control consistency over judgment or speed.'),
                     'rationale': risk.get('secondary_rationale', 'Structured approach to risk management with clear procedures.'),
                     'evidence': self._extract_evidence_points(risk.get('secondary_rationale', ''))
                 },
@@ -872,18 +876,22 @@ COMPANY CONTENT:{context_note}
                 'risk_profile': 'Conservative with strong capital preservation focus'
             },
             
-            # Legacy format for backward compatibility
+            # Legacy format for backward compatibility (with definitions added)
             'business_strategy': {
                 'dominant': business.get('dominant_archetype', 'Disciplined Specialist Growth'),
+                'dominant_definition': self.business_archetypes.get(business.get('dominant_archetype', 'Disciplined Specialist Growth'), 'Niche focus with strong underwriting edge; grows opportunistically while recycling balance-sheet.'),
                 'dominant_reasoning': business.get('dominant_rationale', 'Analysis completed successfully'),
                 'secondary': business.get('secondary_archetype', 'Service-Driven Differentiator'),
+                'secondary_definition': self.business_archetypes.get(business.get('secondary_archetype', 'Service-Driven Differentiator'), 'Wins by superior client experience / advice rather than price or scale.'),
                 'secondary_reasoning': business.get('secondary_rationale', 'Secondary analysis completed'),
                 'evidence_quotes': self._extract_evidence_points(business.get('dominant_rationale', ''))
             },
             'risk_strategy': {
                 'dominant': risk.get('dominant_archetype', 'Risk-First Conservative'),
+                'dominant_definition': self.risk_archetypes.get(risk.get('dominant_archetype', 'Risk-First Conservative'), 'Prioritises capital preservation and regulatory compliance; growth is secondary to resilience.'),
                 'dominant_reasoning': risk.get('dominant_rationale', 'Risk analysis completed successfully'),
                 'secondary': risk.get('secondary_archetype', 'Rules-Led Operator'),
+                'secondary_definition': self.risk_archetypes.get(risk.get('secondary_archetype', 'Rules-Led Operator'), 'Strict adherence to rules and checklists; prioritises control consistency over judgment or speed.'),
                 'secondary_reasoning': risk.get('secondary_rationale', 'Secondary risk analysis completed'),
                 'evidence_quotes': self._extract_evidence_points(risk.get('dominant_rationale', ''))
             },
